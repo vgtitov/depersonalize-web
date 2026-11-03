@@ -211,10 +211,17 @@ const SECVAL = "(?:\"((?:[^\"\\\\\\n\u2028]|\\\\.)+)\"|'((?:[^'\\\\\\n\u2028]|\\
 const KWS = "парол[ьяю]|password|passwd|passphrase|pass|pwd|api[ _-]?key|apikey|access[ _-]?key|pin|пин|pin-?код|пин-?код|cvv|cvc|otp|код[ ]доступа|код[ ]подтверждения|одноразов\\w+[ ]код|access[ ]code", KWW = "токен|token|секрет|secret";
 const notLabel = v => !/^\[[А-ЯЁA-Z]+_\d+\]$/.test(v), strongVal = v => notLabel(v) && (v.length >= 16 || /\d/.test(v) || /[a-zа-яё][A-ZА-ЯЁ]|[A-ZА-ЯЁ].*[a-zа-яё]/.test(v) && /[A-Za-zА-Яа-яЁё]/.test(v) && /[^A-Za-zА-Яа-яЁё]/.test(v));
 const kwRe = (kw, sep) => new RegExp(`(?<![\\wА-Яа-яЁё])(?:${kw})(?![\\wА-Яа-яЁё])${sep}${SECVAL}`, "gi");
+// Вне URL пароль может содержать & и даже &имя=: значение не обрываем на &. Внутри query-строки (перед ключом ? или &) & разделяет параметры.
+const SECVAL_P = SECVAL.replace("&(?!\\w+=)", "&").replace("[\\s&\"']", "[\\s\"']");
+const kwReQ = (kw, sep) => new RegExp(`(?<=[?&])(?:${kw})(?![\\wА-Яа-яЁё])${sep}${SECVAL}`, "gi");
+const kwReP = (kw, sep) => new RegExp(`(?<![\\wА-Яа-яЁё?&])(?:${kw})(?![\\wА-Яа-яЁё])${sep}${SECVAL_P}`, "gi");
 const RULES = [ // [метка, regex, группа значения, проверка, разбор цепочки]
- ["СЕКРЕТ", kwRe(KWS, SEPC), [1,2,3,4], notLabel],
- ["СЕКРЕТ", kwRe(KWW, SEPC), [1,2,3,4], strongVal],
- ["СЕКРЕТ", kwRe(KWS + "|" + KWW, SEPD), [1,2,3,4], strongVal],
+ ["СЕКРЕТ", kwReP(KWS, SEPC), [1,2,3,4], notLabel],
+ ["СЕКРЕТ", kwReQ(KWS, SEPC), [1,2,3,4], notLabel],
+ ["СЕКРЕТ", kwReP(KWW, SEPC), [1,2,3,4], strongVal],
+ ["СЕКРЕТ", kwReQ(KWW, SEPC), [1,2,3,4], strongVal],
+ ["СЕКРЕТ", kwReP(KWS + "|" + KWW, SEPD), [1,2,3,4], strongVal],
+ ["СЕКРЕТ", kwReQ(KWS + "|" + KWW, SEPD), [1,2,3,4], strongVal],
  ["СЕКРЕТ", /(?<![\wА-Яа-яЁё])(?:парол[ьяю]|password|pass|pwd|токен|token|пин|pin)(?:[ \t]+(?:от|для|к|на|в)[ \t]+[\wА-Яа-яЁё-]+(?:[ \t]+[\wА-Яа-яЁё-]+){0,7})?(?:[ \t]+(?:is|есть))?[ \t]+([^\s"',;]{4,})/gi, 1, v=>/\d/.test(v)&&notLabel(v)],
  ["СЕКРЕТ", /(?<![\wА-Яа-яЁё])(?:pin|пин|pin-?код|пин-?код|cvv2?|cvc2?|otp)[ \t]*[:=]?[ \t]*(\d{3,8})(?![\d\wА-Яа-яЁё])/gi, 1],
  ["СЕКРЕТ", kwRe(KWS + "|token|токен", QUAL + "[ \\t]+(?=[\"'«])"), [1,2,3,4], notLabel],
