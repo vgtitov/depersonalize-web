@@ -12,7 +12,7 @@ const leak = async (files, bads) => { const r = await O.anonymizeDocx(await docx
   await leak({ "word/document.xml": W + '<w:p><w:r><w:instrText> HYPERLINK "mailto:ivan.sid</w:instrText></w:r><w:r><w:instrText>orov@example.test" </w:instrText></w:r><w:fldSimple w:instr=" HYPERLINK &quot;mailto:ivan.sidorov@example.test&quot; "><w:r><w:t>x</w:t></w:r></w:fldSimple></w:p>' + WE }, ["ivan.sid", "sidorov"]);
   // P1-2: атрибуты и части
   await leak({
-    "word/document.xml": W + '<w:p><w:hyperlink w:tooltip="Профиль: Иван Петрович Сидоров"><w:r><w:t>x</w:t></w:r></w:hyperlink><w:r><w:drawing><pic:cNvPr id="0" name="Сидоров Иван Петрович паспорт.jpg"/></w:drawing></w:r><w:pict><v:shape alt="Иван Петрович Сидоров"><v:imagedata o:title="Иван Сидоров"/></v:shape></w:pict><w:smartTag><w:smartTagPr><w:attr w:name="ProductID" w:val="Иван Петрович Сидоров"/></w:smartTagPr></w:smartTag><w:bookmarkStart w:id="1" w:name="Иван_Сидоров"/><w:sdt><w:sdtPr><w:docPart w:val="Иван Петрович Сидоров"/></w:sdtPr></w:sdt></w:p>' + WE,
+    "word/document.xml": W + '<w:p><w:hyperlink w:tooltip="Профиль: Иван Петрович Сидоров"><w:r><w:t>x</w:t></w:r></w:hyperlink><w:r><w:drawing><pic:cNvPr id="0" name="Сидоров Иван Петрович паспорт.jpg"/></w:drawing></w:r><w:pict><v:shape alt="Иван Петрович Сидоров"><v:imagedata o:title="Иван Сидоров"/></v:shape></w:pict><w:smartTag><w:smartTagPr><w:attr w:name="ProductID" w:val="Иван Петрович Сидоров"/></w:smartTagPr></w:smartTag><w:sdt><w:sdtPr><w:docPart w:val="Иван Петрович Сидоров"/></w:sdtPr></w:sdt></w:p>' + WE,
     "word/settings.xml": '<w:settings xmlns:w="w"><w:docVars><w:docVar w:name="Client" w:val="Иван Петрович Сидоров"/></w:docVars></w:settings>',
     "docProps/app.xml": "<Properties><TitlesOfParts><vt:vector><vt:lpstr>Договор с Иваном Петровичем Сидоровым</vt:lpstr></vt:vector></TitlesOfParts><Words>1234567</Words></Properties>",
     "customXml/item1.xml": '<root><Person name="Иван Петрович Сидоров" mail="ivan@example.test"/><!-- автор Иван Петрович Сидоров --></root>',
@@ -32,5 +32,12 @@ const leak = async (files, bads) => { const r = await O.anonymizeDocx(await docx
   assert.deepStrictEqual(E.depersonalizeMany(["Ответственный: Ольга Зима", "План на Зима 2026"], []).texts[1], "План на Зима 2026");
   // P3-7: числа диаграммы остаются числами
   assert.ok((await leak({ "word/document.xml": W + "<w:p/>" + WE, "word/charts/c1.xml": "<c:numCache><c:pt><c:v>4111111111111111</c:v></c:pt></c:numCache>" }, [])).p["word/charts/c1.xml"].includes("4111111111111111"));
+  // раунд 4
+  eq("Ольга Ткач пришла. Ткач ушла. Иван Мельник звонил, Мельнику перезвонить", [], "[ЧЕЛОВЕК_1] пришла. [ЧЕЛОВЕК_1] ушла. [ЧЕЛОВЕК_2] звонил, [ЧЕЛОВЕК_2] перезвонить");
+  const fl = await leak({ "word/document.xml": W + '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> HYPERLINK "mailto:ivan@example.test" </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>' + WE }, ["ivan@"]);
+  assert.ok(fl.p["word/document.xml"].includes("> PAGE <"), "второе поле должно остаться");
+  const sc = await leak({ "word/document.xml": W + '<w:p><w:bookmarkStart w:id="1" w:name="Сидоров_Иван"/></w:p>' + WE, "customXml/itemProps1.xml": '<ds:datastoreItem ds:itemID="{ABC}"><ds:schemaRefs><ds:schemaRef ds:uri="http://schemas.openxmlformats.org/officeDocument/2006/bibliography"/></ds:schemaRefs></ds:datastoreItem>' }, []);
+  assert.ok(sc.p["customXml/itemProps1.xml"].includes("officeDocument/2006/bibliography") && sc.p["customXml/itemProps1.xml"].includes("{ABC}"));
+  assert.ok(sc.r.warn.some(w => /закладк/.test(w)));
   console.log("ревью раунд 5 (Opus 3): ok");
 })().catch(e => { console.error(e); process.exit(1) });

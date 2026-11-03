@@ -164,19 +164,20 @@ const FLAT = /^(?:customXml\/(?!_rels\/).*\.xml|word\/(?:charts|diagrams)\/(?!_r
 const attrEsc = s => xmlEsc(s).replace(/"/g, "&quot;");
 // Группы текста части: живой текст абзаца (с вставками w:ins) — одна группа; удалённый текст (w:delText) — своя группа на каждое w:del; w:instrText — по одному.
 function textGroups(xml) {
-  const re = /<(w|a):p[ >]|<\/(?:w|a):p>|<w:(?:del|moveFrom|moveTo)\b(?![^>]*\/>)[^>]*>|<\/w:(?:del|moveFrom|moveTo)>|<w:ins\b(?![^>]*\/>)[^>]*>|<\/w:ins>|<(w:t|w:delText|a:t|w:instrText)\b(?![^>]*\/>)([^>]*)>([\s\S]*?)<\/\2>/g;
-  const paras = [], dels = []; let pid = 0, did = 0, ins = 0, iid = 0; const groups = new Map();
+  const re = /<(w|a):p[ >]|<\/(?:w|a):p>|<w:(?:del|moveFrom|moveTo)\b(?![^>]*\/>)[^>]*>|<\/w:(?:del|moveFrom|moveTo)>|<w:fldChar\b[^>]*>|<w:ins\b(?![^>]*\/>)[^>]*>|<\/w:ins>|<(w:t|w:delText|a:t|w:instrText)\b(?![^>]*\/>)([^>]*)>([\s\S]*?)<\/\2>/g;
+  const paras = [], dels = []; let pid = 0, did = 0, ins = 0, fid = 0; const flds = []; const groups = new Map();
   for (const m of xml.matchAll(re)) {
     const t = m[0];
     if (m[1]) paras.push(++pid);
     else if (t === "</w:p>" || t === "</a:p>") paras.pop();
     else if (/^<w:(?:del|moveFrom|moveTo)[\s>]/.test(t)) dels.push({ id: ++did, mv: !/^<w:del[\s>]/.test(t) });
     else if (/^<\/w:(?:del|moveFrom|moveTo)>/.test(t)) dels.pop();
+    else if (t.startsWith("<w:fldChar")) { const ty = /fldCharType="(\w+)"/.exec(t); if (ty && ty[1] === "begin") flds.push(++fid); else if (ty && ty[1] === "end") flds.pop() }
     else if (/^<w:ins[\s>]/.test(t)) ins++;
     else if (t === "</w:ins>") ins--;
     else {
       const name = m[2], dl = dels[dels.length - 1], pr = paras[paras.length - 1] || 0;
-      const key = dl && dl.mv ? "m" + dl.id : name === "w:instrText" ? "i" + pr : name === "w:delText" ? "d" + (dl ? dl.id : 0) : "p" + pr; // код поля может быть разбит на части: все части абзаца вместе
+      const key = dl && dl.mv ? "m" + dl.id : name === "w:instrText" ? (flds.length ? "f" + flds[flds.length - 1] : "i" + pr) : name === "w:delText" ? "d" + (dl ? dl.id : 0) : "p" + pr; // код поля может быть разбит на части: все части абзаца вместе
       const run = { open: m.index, ca: m.index + 1 + name.length + m[3].length + 1, name, attrs: m[3], raw: m[4] };
       run.cb = run.ca + m[4].length; run.end = run.cb + name.length + 3;
       if (!groups.has(key)) groups.set(key, { runs: [], chg: false });
@@ -186,13 +187,13 @@ function textGroups(xml) {
   return [...groups.values()];
 }
 // Атрибуты с текстом: подписи и подсказки, имена файлов и закладок, поля содержимого, переменные документа, коды простых полей.
-const SLOT_ANY = /\b((?:w:|o:)?(?:descr|title|alt|tooltip|instr))="([^"]*)"/g, SLOT_TAG = /^<(?:[\w]+:)?(?:cNvPr|docPr|bookmarkStart|docVar|docPart|alias|tag|attr|smartTagPr|placeholder)\b/, SLOT_NAME = /\b((?:w:)?(?:name|val))="([^"]*)"/g;
+const SLOT_ANY = /\b((?:w:|o:)?(?:descr|title|alt|tooltip|instr))="([^"]*)"/g, SLOT_TAG = /^<(?:[\w]+:)?(?:cNvPr|docPr|docVar|docPart|alias|tag|attr|smartTagPr|placeholder)\b/, SLOT_NAME = /\b((?:w:)?(?:name|val))="([^"]*)"/g;
 function attrSlots(xml, all = false) {
   const out = [], seen = new Set();
   for (const m of xml.matchAll(/<[\w:]+\b[^>]*>/g)) {
     const tag = m[0], rx = all ? [/\b([\w:]+)="([^"]*)"/g] : SLOT_TAG.test(tag) ? [SLOT_ANY, SLOT_NAME] : [SLOT_ANY];
     for (const r of rx) for (const a of tag.matchAll(r)) {
-      if (!a[2].trim() || /^xmlns/.test(a[1]) || (all && (/^\{.*\}$/.test(a[2]) || !/[A-Za-zА-Яа-яЁё\d]/.test(a[2])))) continue;
+      if (!a[2].trim() || /^xmlns/.test(a[1]) || (all && (/^\{.*\}$/.test(a[2]) || /^(?:ds:)?(?:uri|itemID)$/.test(a[1]) || /^https?:\/\/(?:schemas\.|www\.w3\.org|purl\.org)/.test(a[2]) || !/[A-Za-zА-Яа-яЁё\d]/.test(a[2])))) continue;
       const pos = m.index + a.index + a[0].indexOf('"') + 1;
       if (!seen.has(pos)) { seen.add(pos); out.push({ a: pos, b: pos + a[2].length, raw: a[2] }) }
     }
@@ -244,6 +245,8 @@ async function mapDocx(buf, fn, { clean = false } = {}) {
     if (clean && it.kind === "xml") xml = xml.replace(/\b(w:author|w15:author)="[^"]*"/g, '$1="Автор"').replace(/\bw:initials="[^"]*"/g, 'w:initials=""').replace(/<w15:person\b[\s\S]*?<\/w15:person>/g, "");
     if (xml !== it.xml) zip.file(it.name, xml);
   }
+  const bm = await Promise.all(names.filter(n => PARA.test(n)).map(async n => /<w:bookmarkStart\b[^>]*w:name="(?!_)/.test(await zip.file(n).async("string"))));
+  if (bm.some(Boolean)) warn.push("в документе есть закладки с именами: имена не меняются, проверьте их вручную");
   if (merged) warn.push("в документе есть исправления (рецензирование): изменённые места сведены в обычный текст");
   if (clean) { // свойства файла: автор, редактор, название, организация
     const blank = async (p, tags) => { const f = zip.file(p); if (f) zip.file(p, (await f.async("string")).replace(new RegExp("(<(" + tags + ")(?:\\s[^>]*)?>)[\\s\\S]*?(</\\2>)", "g"), "$1$3")) };

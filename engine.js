@@ -149,7 +149,7 @@ function depersonalizeMany(texts, dictLines){
   const parsed=texts.map(t=>analyze(t,dictRes));
   // одинокая фамилия, которая в этих текстах названа с именем: «сказала Сидорову»
   const lasts=new Set();
-  for(const {keep} of parsed)for(const k of keep)if(k[2]==="ЧЕЛОВЕК"){const l=parsePerson(k[3]).last;if(l&&l.length>=4&&/(?:ов|ев|ёв|ин|ын|ский|цкий|ск|цк|ова|ева|ина|ына|енко|ко|ук|юк|ич|ий|ой|ая|ов[аы]?)$/i.test(l))lasts.add(l)}
+  for(const {keep} of parsed)for(const k of keep)if(k[2]==="ЧЕЛОВЕК"){const l=parsePerson(k[3]).last;if(l&&l.length>=4&&/(?:ов|ев|ёв|ин|ын|ск\w{0,2}|цк\w{0,2}|ова|ева|ина|ына|енко|ко|ло|ук|юк|ич|ыч|ий|ой|ая|ач|ик|ец|ець|аль|ель|оль|арь|ярь|ар|ай|ун|ак|як|ан|ян|ей|ур|аш|ёк|ек)$/i.test(l))lasts.add(l)}
   const outs=texts.map((text,ti)=>{
     const {keep,sec}=parsed[ti];
     if(lasts.size){const re=/(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]{3,}(?![А-ЯЁа-яё])/g,extra=[];let m,j=0;
