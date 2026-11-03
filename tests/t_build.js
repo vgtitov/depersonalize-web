@@ -22,3 +22,7 @@ assert.ok(m, "не нашёл привязку движка в office.js");
 for (const n of m[1].split(", ")) assert.ok(typeof eng[n] === "function", n + " нет в экспорте engine.js");
 for (const n of Object.keys(eng)) if (!m[1].split(", ").includes(n) && /depersonalize|restore/.test(n)) assert.fail(n + " не подключён в браузерной привязке office.js");
 console.log("привязка движка в браузере: ok");
+// блок «сообщить о проблеме» есть и ведёт только на страницу запросов репозитория
+assert.ok(/id="help"/.test(html) && html.includes('href="https://github.com/vgtitov/depersonalize-web/issues/new/choose"'), "нет блока про сообщение о проблеме");
+assert.ok(/настоящие данные/.test(html.split('id="help"')[1].split("</footer>")[0]), "в блоке нет предупреждения не присылать настоящие данные");
+console.log("сообщить о проблеме: ok");

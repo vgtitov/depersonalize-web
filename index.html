@@ -14,6 +14,7 @@ main{max-width:1000px;margin:0 auto;padding:12px 16px 40px}
 h1{font-size:1.5rem;margin:.3em 0 .1em}
 h2{font-size:1.1rem;margin:1.4em 0 .4em}
 .lock{background:var(--okbg);color:var(--ok);padding:8px 12px;border-radius:10px;font-weight:600;margin:8px 0}
+.help{margin-top:28px;padding-top:16px;border-top:1px solid var(--line);font-size:.95rem;color:var(--mut)}.help h2{font-size:1.05rem;color:var(--fg);margin:0 0 6px}.help a{color:var(--acc)}.help ol{padding-left:20px;margin:6px 0}
 .note{background:var(--warnbg);color:var(--warn);padding:10px 12px;border-radius:10px;font-size:.95rem}
 .tabs{display:flex;gap:6px;margin:14px 0 0;flex-wrap:wrap}
 .tabs button{flex:1 1 90px;font-size:1.05rem;padding:12px 8px;border:2px solid var(--line);background:var(--card);color:var(--fg);border-radius:12px 12px 0 0;cursor:pointer}
@@ -138,6 +139,16 @@ summary{cursor:pointer;font-weight:600}
 <div><button class="big" id="doc-back">Вернуть имена</button></div>
 <div class="msg" id="m-doc" aria-live="polite" hidden></div>
 </section>
+<footer class="help" id="help">
+<h2>Нашли ошибку или страница отработала не так?</h2>
+<p>Что-то не заменилось, заменилось лишнее, файл не открывается. Сообщите, это поможет исправить.</p>
+<ol>
+<li>Откройте <a href="https://github.com/vgtitov/depersonalize-web/issues/new/choose" target="_blank" rel="noopener noreferrer">форму обращения на GitHub</a> (нужен аккаунт GitHub). Нет аккаунта: перешлите описание тому, кто дал вам эту ссылку.</li>
+<li>Опишите, что вы делали и что получилось. Не присылайте настоящие данные: замените имена и номера вымышленными и не прикладывайте файлы с реальными данными.</li>
+<li>Укажите браузер и тип файла (текст, Excel, Word).</li>
+</ol>
+<p>Исходный код, лицензия MIT и правила участия: <a href="https://github.com/vgtitov/depersonalize-web" target="_blank" rel="noopener noreferrer">репозиторий на GitHub</a>.</p>
+</footer>
 </main>
 <!--BUILD-->
 <script>

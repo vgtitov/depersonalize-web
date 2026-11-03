@@ -1,10 +1,16 @@
 # Безопасная копия для ИИ
 
+[![tests](https://github.com/vgtitov/depersonalize-web/actions/workflows/tests.yml/badge.svg)](https://github.com/vgtitov/depersonalize-web/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-00B9BF.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![AGENTS.md](https://img.shields.io/badge/AGENTS.md-ready-blue.svg)](AGENTS.md)
+[![Работает в браузере, без сети](https://img.shields.io/badge/data-stays%20in%20browser-5b21b6.svg)](SECURITY.md)
+
 Страница, которая прячет в тексте, таблице Excel и документе Word имена, телефоны, почту, организации и пароли, прежде чем вы отправите файл нейросети. Ответ ИИ можно вернуть обратно с настоящими значениями. Всё происходит в вашем браузере.
 
 > **Это не гарантия приватности, а снижение риска.** Страница ловит типичное, но что-то пропустит. Перед отправкой посмотрите безопасную копию глазами: должность, редкое событие, сумма могут выдать человека.
 
-Откройте `index.html` двойным щелчком (или страницу на GitHub Pages). Нажмите «Показать на примере» на любой вкладке, чтобы за минуту увидеть, как это работает.
+Откройте [страницу на GitHub Pages](https://vgtitov.github.io/depersonalize-web/) или `index.html` двойным щелчком. Нажмите «Показать на примере» на любой вкладке, чтобы за минуту увидеть, как это работает.
 
 ## Как пользоваться
 Три вкладки: **Текст**, **Excel**, **Word**. На каждой четыре шага.
@@ -55,6 +61,12 @@ node example/make_examples.js   # пересоздать файлы для пр�
 
 ## Сторонние компоненты
 См. [THIRD_PARTY.md](THIRD_PARTY.md): JSZip 3.10.1 (используется по лицензии MIT, содержит pako 1.0.11, MIT и Zlib).
+
+## Нашли проблему или хотите помочь
+- Что-то пропущено, заменено лишнее или не открывается файл: [создайте issue](https://github.com/vgtitov/depersonalize-web/issues/new/choose) с вымышленным примером. Настоящие данные не присылайте.
+- Утечка данных или уязвимость: приватно, см. [SECURITY.md](SECURITY.md).
+- Хотите исправить сами (люди и ИИ-агенты приветствуются): [CONTRIBUTING.md](CONTRIBUTING.md) и [AGENTS.md](AGENTS.md).
+- Что изменилось: [CHANGELOG.md](CHANGELOG.md). Кодекс поведения: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Лицензия
 MIT, см. [LICENSE](LICENSE).

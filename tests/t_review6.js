@@ -1,4 +1,4 @@
-// Независимое ревью Opus, 03.11: P1 1-2 и P2 3-9.
+// Независимое ревью, 03.11: P1 1-2 и P2 3-9.
 const assert = require("assert");
 const Z = require("../vendor/jszip.min.js");
 const O = require("../office.js"), E = require("../engine.js");

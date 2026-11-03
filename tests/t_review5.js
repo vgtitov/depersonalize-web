@@ -1,4 +1,4 @@
-// Случаи из ревью Opus, раунд 3.
+// Случаи из ревью, раунд 3.
 const assert = require("assert");
 const Z = require("../vendor/jszip.min.js");
 const O = require("../office.js"), E = require("../engine.js");
@@ -42,5 +42,5 @@ const leak = async (files, bads) => { const r = await O.anonymizeDocx(await docx
   // раунд 5: вложенное поле не уезжает
   const nf = await leak({ "word/document.xml": W + '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> IF 1 = 1 "</w:instrText></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> MERGEFIELD x </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:instrText>" "ivan.sid</w:instrText></w:r><w:r><w:instrText>orov@example.test" </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>' + WE }, ["ivan.sid"]);
   assert.ok(/IF 1 = 1 "<\/w:instrText>[\s\S]*MERGEFIELD x[\s\S]*\[EMAIL_1\]/.test(nf.p["word/document.xml"]), "порядок кусков кода сохранён");
-  console.log("ревью раунд 5 (Opus 3): ok");
+  console.log("ревью раунд 5: ok");
 })().catch(e => { console.error(e); process.exit(1) });

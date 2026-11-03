@@ -1,4 +1,4 @@
-// Случаи из ревью Codex, раунд 1.
+// Случаи из ревью, раунд 1.
 const assert = require("assert");
 const { depersonalize, restore, mapToJson } = require("../engine.js");
 const eq = (t, d, want) => assert.strictEqual(depersonalize(t, d).text, want, t);

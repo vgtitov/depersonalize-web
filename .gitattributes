@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.xlsx binary
+*.docx binary
+vendor/jszip.min.js -diff

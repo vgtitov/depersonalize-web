@@ -1,4 +1,4 @@
-// Случаи из ревью Opus (раунд 3): Excel/Word и движок. Файлы собираются в тесте.
+// Случаи из ревью (раунд 3): Excel/Word и движок. Файлы собираются в тесте.
 const assert = require("assert");
 const Z = require("../vendor/jszip.min.js");
 const O = require("../office.js"), E = require("../engine.js");
@@ -74,5 +74,5 @@ const all = o => Object.values(o).join("\n");
   eq("Магазин Елена закрыт", [], "Магазин Елена закрыт");
   eq("Господин Иван пришёл", [], "Господин Иван пришёл");
   eq("Звоните 29 123-45-67 и (029)1234567", [], "Звоните [ТЕЛЕФОН_1] и [ТЕЛЕФОН_2]");
-  console.log("ревью раунд 3 (Opus): ok");
+  console.log("ревью раунд 3: ok");
 })().catch(e => { console.error(e); process.exit(1) });

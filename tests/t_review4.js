@@ -1,4 +1,4 @@
-// Случаи из ревью Opus, раунд 4.
+// Случаи из ревью, раунд 4.
 const assert = require("assert");
 const Z = require("../vendor/jszip.min.js");
 const O = require("../office.js"), E = require("../engine.js");
@@ -54,5 +54,5 @@ const leak = async (files, bads) => { const r = await O.anonymizeDocx(await docx
   assert.strictEqual(O.detectColumns([["Показатель", "Расчет суммы", "Тел."], ["1", "2", "3"]]).map(c => c.mode).join(), "keep,keep,key");
   // P3-14: U+2028 в ячейке сохраняется
   a = O.anonymizeTable([["К"], ["a\u2028b Иван Сидоров"]], [{ index: 0, mode: "scan", kind: "ЗНАЧЕНИЕ" }]); assert.strictEqual(a.rows[1][0], "a\u2028b [ЧЕЛОВЕК_1]");
-  console.log("ревью раунд 4 (Opus 2): ok");
+  console.log("ревью раунд 4: ok");
 })().catch(e => { console.error(e); process.exit(1) });
