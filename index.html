@@ -159,11 +159,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 // Движок обезличивания. Без внешних зависимостей и без сети.
 const FIRST = ("Александр Алексей Андрей Антон Артём Артем Борис Вадим Валентин Валерий Василий Виктор Виталий Владимир Владислав Вячеслав Геннадий Георгий Глеб Григорий Даниил Денис Дмитрий Евгений Егор Иван Игорь Илья Кирилл Константин Леонид Максим Михаил Никита Николай Олег Павел Пётр Петр Роман Сергей Станислав Степан Тимофей Фёдор Федор Юрий Ян Яков " +
  "Александра Алёна Алена Алина Алла Анастасия Анна Антонина Валентина Валерия Вера Вероника Виктория Галина Дарья Диана Евгения Екатерина Елена Елизавета Жанна Зоя Инна Ирина Кристина Ксения Лариса Лера Лидия Любовь Людмила Мария Марина Надежда Наталья Наталия Нина Оксана Ольга Полина Раиса Светлана София Софья Татьяна Ульяна Юлия Юлиана").split(" ");
+FIRST.push(...("Ярослав Анатолий Руслан Артур Богдан Эдуард Тимур Марк Мирон Назар Назарий Родион Савелий Семён Семен Светозар Ростислав Радим Платон Лев Матвей Кузьма Климент Елисей Ефим Давид Демид Данила Данил Всеволод Вениамин Влад Альберт Аркадий Арсений Артемий Афанасий Бронислав Вальдемар Витольд Вацлав Гавриил Герман Григорий Дамир Денис Захар Зиновий Ильяс Иосиф Казимир Касьян Лазарь Макар Мартин Мстислав Никанор Остап Прохор Ренат Рустам Самуил Тарас Тихон Трофим Устин Фаддей Филипп Харитон Эммануил Эрик Юлиан Юрий Яромир Ярослава Агата Агния Адель Аделина Аксинья Алевтина Альбина Аврора Ангелина Антонида Арина Ася Белла Богдана Вилена Влада Владислава Галя Глафира Дана Дина Доминика Ева Евдокия Елена Есения Зарина Зинаида Злата Изабелла Илона Инга Ия Калерия Каролина Клавдия Клара Лада Лиана Лилия Любава Майя Маргарита Марфа Матрёна Мила Милана Мирослава Муза Нелли Ника Нинель Оля Павла Пелагея Рада Регина Рената Римма Роза Руслана Руфина Сабина Серафима Снежана Стелла Стефания Таисия Тамара Таня Ульяна Устинья Фаина Фёкла Эвелина Эльвира Эмилия Эмма Юлиана Яна Ярослава Эльза Эля Ханна Ольга Лариса").split(" "));
 const FIRSTSET = new Set(FIRST.map(s=>s.toLowerCase()));
+const STOP = new Set("магазин господин гражданин дворянин крестьянин раввин цин".split(" ")); // слова на -ин/-ов, не фамилии
+const NOTSURN = new Set("январь февраль март апрель май июнь июль август сентябрь октябрь ноябрь декабрь понедельник вторник среда четверг пятница суббота воскресенье вчера сегодня завтра".split(" "));
+const CELLSEP = "\u2028"; // разделитель ячеек и абзацев при обработке пачкой: для регулярных выражений это пробельный символ
+const joinCells = a => a.map(x => String(x).replace(/\u2028/g, "\n")).join(CELLSEP);
+const splitCells = (t, n) => { const p = t.split(CELLSEP); if (p.length !== n) throw new Error("внутренняя ошибка: число ячеек изменилось"); return p };
 const CAP = "[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?";
 const PATR = "(?:(?:ович|евич|ьич)(?:а|у|ем|ом|е|ы)?|(?:овн|евн|ичн|инична?)(?:а|у|ы|е|ой|ою)|ична|инична)";
 const SURN = "(?:ов|ев|ёв|ин|ын|(?:ск|цк)(?:ий|ая|ого|ому|им|ом|ой|ую|ое)|ова|ева|ина|ына|енко|ук|юк|чик|ич)(?:а|у|ым|ом|ем|ой|е|ых|ого|ому)?";
-const ORGF = "(?:ООО|ЗАО|ОАО|ОДО|ЧУП|УП|ПАО|АО|ИП|ЧП|НКО|УО)";
+const ORGF = "(?:СООО|ИООО|ЧТУП|ЧПУП|РУП|КУП|ООО|ЗАО|ОАО|ОДО|ЧУП|ПАО|ЧП|УО|НКО|ГП|ГУ|АО|УП|ИП)";
 const ORGW = "(?:[А-ЯЁ][а-яё]{2,}|[A-Z][A-Za-z]{2,}|[А-ЯЁ]{3,}|[A-Z]{3,})(?:-(?:[А-ЯЁ][а-яё]+|[A-Za-z]+|[А-ЯЁ]+))*";
 // Название без кавычек: форма собственности и слова после неё, пока не встретилось имя человека.
 function orgName(v){const ws=[...v.matchAll(/\S+/g)];let end=ws[0].index+ws[0].length;
@@ -182,22 +188,25 @@ function capsPeople(v){
     if(p){out.push([ws[i].a,ws[i+p.length-1].b]);i+=p.length}else i++}
   return out}
 function cls(w){const l=w.toLowerCase();return PATX.test(l)?"P":FIRSTSET.has(stem(w))?"F":SURX.test(l)?"S":"X"}
-const SEP = "[\"']?(?:[ \\t]*[:=]|[ \\t]+[-–—])[ \\t]*";
-const SECVAL = "(?:\"((?:[^\"\\\\\\n]|\\\\.)+)\"|'((?:[^'\\\\\\n]|\\\\.)+)'|«([^»\\n]+)»|((?:[^\\s\"',;&]|&(?!\\w+=))+))";
+const SEP = "(?:[ \\t]+[\\wА-Яа-яЁё-]+){0,2}[\"']?(?:[ \\t]*[:=]|[ \\t]+[-–—])[ \\t]*(?:\\r?\\n[ \\t]*)?";
+const SECVAL = "(?:\"((?:[^\"\\\\\\n\u2028]|\\\\.)+)\"|'((?:[^'\\\\\\n\u2028]|\\\\.)+)'|«([^»\\n]+)»|((?:[^\\s\"',;&]|&(?!\\w+=))+?)(?=[.!?)]*(?:[\\s,;&\"']|$)))";
 const RULES = [ // [метка, regex, группа значения, проверка, разбор цепочки]
- ["СЕКРЕТ", new RegExp(`(?<![\\wА-Яа-яЁё])(?:парол[ьяю]|password|passwd|passphrase|pass|pwd|токен|token|секрет|secret|api[ _-]?key|apikey|access[ _-]?key)(?![\\wА-Яа-яЁё])${SEP}${SECVAL}`,"gi"), [1,2,3,4], v=>!/^\[[А-ЯЁA-Z]+_\d+\]$/.test(v)],
+ ["СЕКРЕТ", new RegExp(`(?<![\\wА-Яа-яЁё])(?:парол[ьяю]|password|passwd|passphrase|pass|pwd|токен|token|секрет|secret|api[ _-]?key|apikey|access[ _-]?key|pin|пин|pin-?код|пин-?код|cvv|cvc|otp)(?![\\wА-Яа-яЁё])${SEP}${SECVAL}`,"gi"), [1,2,3,4], v=>!/^\[[А-ЯЁA-Z]+_\d+\]$/.test(v)],
+ ["СЕКРЕТ", /(?<![\wА-Яа-яЁё])(?:парол[ьяю]|password|pass|pwd|токен|token)[ \t]+([^\s"',;]{6,})/gi, 1, v=>/\d/.test(v)&&/[A-Za-zА-Яа-яЁё]/.test(v)&&!/^\[[А-ЯЁA-Z]+_\d+\]$/.test(v)],
  ["СЕКРЕТ", /(?<=\b[a-z][a-z0-9+.-]*:\/\/[^\s:@\/?#]+:)[^\s@\/?#]+(?=@)/gi, 0],
  ["СЕКРЕТ", /(?<![\wА-Яа-яЁё])bearer[ \t]+([A-Za-z0-9._~+\/=-]{12,})/gi, 1],
  ["СЕКРЕТ", /(?<![\w-])(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})(?![\w-])/g, 0],
- ["ОРГ", new RegExp(`(?<![А-ЯЁа-яёA-Za-z])${ORGF}[ \\t]+[«"„“'][^«»"„“”'\\n]{1,80}[»"“”']`,"g"), 0],
- ["ОРГ", new RegExp(`(?<![А-ЯЁа-яёA-Za-z])(?:ООО|ЗАО|ОАО|ОДО|ЧУП|УП|ПАО|АО|ЧП|УО|НКО)[ \\t]+${ORGW}(?:[ \\t]+${ORGW}){0,3}(?![А-ЯЁа-яёA-Za-z])`,"g"), 0, null, orgName],
+ ["ОРГ", new RegExp(`(?<![А-ЯЁа-яёA-Za-z])${ORGF}[ \\t]+[«"„“'][^«»"„“”'\\n\u2028]{1,80}[»"“”']`,"g"), 0],
+ ["ОРГ", /(?<![А-ЯЁа-яё])(?:[Оо]бщество с ограниченной ответственностью|[Оо]ткрытое акционерное общество|[Зз]акрытое акционерное общество|[Аа]кционерное общество|[Уу]нитарное предприятие|[Чч]астное унитарное предприятие|[Ии]ндивидуальный предприниматель)[ \t]+[«"„“'][^«»"„“”'\n\u2028]{1,80}[»"“”']/g, 0],
+ ["ОРГ", new RegExp(`(?<![А-ЯЁа-яёA-Za-z])(?:СООО|ИООО|ЧТУП|ЧПУП|РУП|КУП|ООО|ЗАО|ОАО|ОДО|ЧУП|ПАО|ЧП|УО|НКО|АО|УП)[ \\t]+${ORGW}(?:[ \\t]+${ORGW}){0,3}(?![А-ЯЁа-яёA-Za-z])`,"g"), 0, null, orgName],
  ["EMAIL", /(?<![\wА-Яа-яЁё.+-])[\wА-Яа-яЁё.+-]{1,64}@[\wА-Яа-яЁё-]{1,63}(?:\.[\wА-Яа-яЁё-]{1,63}){1,8}/g, 0],
  ["URL", /\b(?:https?:\/\/|www\.)[^\s<>"')\]]*[^\s<>"')\]\.,;:!?]/gi, 0],
  ["IP", /(?<![\w.])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?![\w]|\.\d)/g, 0],
  ["ТЕЛЕФОН", /(?<![\w+])(?:\+375|375|8[\s-]?0)[\s()-]*\d{2}[\s()-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}(?!\d)/g, 0],
  ["ТЕЛЕФОН", /(?<![\w+])(?:\+7|8)[\s()-]*\d{3}[\s()-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}(?!\d)/g, 0],
  ["ТЕЛЕФОН", /(?<![\w+])\+\d{1,3}[\s()-]*\d[\d\s()-]{7,13}\d(?!\d)/g, 0],
- ["ТЕЛЕФОН", /(?<![\w+.:-])(?:80|0)(?:25|29|33|44|17)[\s()-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}(?![\d:])/g, 0],
+ ["ТЕЛЕФОН", /(?<![\w+.:-])\(?(?:80|0)(?:25|29|33|44|17)[\s()-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}(?![\d:])/g, 0],
+ ["ТЕЛЕФОН", /(?<![\w+.:()-])(?:25|29|33|44)[ -]\d{3}[ -]\d{2}[ -]\d{2}(?![\d:])/g, 0],
  ["НИК", /(?<![\w/@.])@[A-Za-z]\w{4,31}/g, 0],
  ["ИНН", /(?<![\wА-Яа-яЁё])инн(?![\wА-Яа-яЁё])\D{0,12}?(\d{12}|\d{10})(?!\d)/gi, 1],
  ["УНП", /(?<![\wА-Яа-яЁё])унп(?![\wА-Яа-яЁё])\D{0,12}?(\d{9})(?!\d)/gi, 1],
@@ -206,10 +215,13 @@ const RULES = [ // [метка, regex, группа значения, прове
  ["ЧЕЛОВЕК", /(?<![А-ЯЁа-яё])[А-ЯЁ]{2,}(?:[ \t]+[А-ЯЁ]{2,})+(?![А-ЯЁа-яё])/g, 0, null, capsPeople],
  ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+${SURN}(?![а-яё])[ \\t]+[А-ЯЁ]\\.[ \\t]?[А-ЯЁ]\\.`,"g"), 0],
  ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ]\\.[ \\t]?[А-ЯЁ]\\.[ \\t]?[А-ЯЁ][а-яё]+${SURN}(?![а-яё])`,"g"), 0],
- ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+[ \\t]+[А-ЯЁ][а-яё]+${PATR}(?![а-яё])(?:[ \\t]+[А-ЯЁ][а-яё]+${SURN}(?![а-яё]))?`,"g"), 0, v=>FIRSTSET.has(stem(v.split(/\s+/)[0]))],
+ ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+[ \\t]+[А-ЯЁ][а-яё]+${PATR}(?![а-яё])(?:[ \\t]+[А-ЯЁ][а-яё]{2,}(?![а-яё-]))?`,"g"), 0, v=>FIRSTSET.has(stem(v.split(/\s+/)[0]))],
  ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])${CAP}[ \\t]+${CAP}[ \\t]+[А-ЯЁ][а-яё]+${PATR}(?![а-яё])`,"g"), 0, v=>{const [w1,w2]=v.split(/\s+/);return FIRSTSET.has(stem(w2))&&(FIRSTSET.has(stem(w1))||new RegExp("^[А-ЯЁ][а-яё]+"+SURN+"$").test(w1))}],
- ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+${SURN}(?![а-яё])[ \\t]+[А-ЯЁ][а-яё]+(?![а-яё])`,"g"), 0, v=>FIRSTSET.has(stem(v.split(/\s+/)[1]))],
+ ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+${SURN}(?![а-яё])[ \\t]+[А-ЯЁ][а-яё]+(?![а-яё])`,"g"), 0, v=>FIRSTSET.has(stem(v.split(/\s+/)[1]))&&!STOP.has(v.split(/\s+/)[0].toLowerCase())],
  ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+(?![а-яё])[ \\t]+[А-ЯЁ][а-яё]+${SURN}(?![а-яё])`,"g"), 0, v=>FIRSTSET.has(stem(v.split(/\s+/)[0]))],
+ ["ЧЕЛОВЕК", /(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+(?![а-яё])[ \t]+[А-ЯЁ][а-яё]{2,}(?![а-яё-])/g, 0, v=>{const [a,b]=v.split(/\s+/);return FIRSTSET.has(stem(a))&&!FIRSTSET.has(stem(b))&&!NOTSURN.has(b.toLowerCase())&&!PATX.test(b.toLowerCase())}],
+ ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ]\\.[ \\t]?[А-ЯЁ][а-яё]+${SURN}(?![а-яё])`,"g"), 0],
+ ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+${SURN}(?![а-яё])[ \\t]+[А-ЯЁ]\\.(?![А-ЯЁа-яё])`,"g"), 0],
 ];
 function stem(w){w=w.toLowerCase();if(/^павл(?:а|у|ом|е|ы)?$/.test(w))return "павел";if(FIRSTSET.has(w))return w;for(const e of ["а","у","ом","ем","е","ы","и","ой","ю","я","ей"]){const s=w.endsWith(e)?w.slice(0,-e.length):null;if(s){for(const t of [s,s+"а",s+"я",s+"ь",s+"й"])if(FIRSTSET.has(t))return t}}return w}
 function luhn(d){if(d.length<13)return false;let s=0,a=false;for(let i=d.length-1;i>=0;i--){let n=+d[i];if(a){n*=2;if(n>9)n-=9}s+=n;a=!a}return s%10===0}
@@ -301,13 +313,13 @@ function depersonalize(text, dictLines){
 function mapToJson(map){return JSON.stringify({format:"depers-web-map-1",pairs:[...map.entries()]})}
 function mapFromJson(j){const o=JSON.parse(j);if(o.format!=="depers-web-map-1"||!Array.isArray(o.pairs))throw new Error("не карта");return new Map(o.pairs.filter(p=>Array.isArray(p)&&typeof p[0]==="string"&&typeof p[1]==="string"))}
 function restore(text,map){return text.replace(/\[[А-ЯЁA-Z]+_\d+\]/g,t=>map.has(t)?map.get(t):t)}
-if (typeof module !== "undefined") module.exports = { depersonalize, restore, mapToJson, mapFromJson };
+if (typeof module !== "undefined") module.exports = { depersonalize, restore, mapToJson, mapFromJson, joinCells, splitCells };
 
 </script>
 <script>
 // Таблицы (CSV, XLSX) и документы (DOCX) локально. Нужен JSZip (vendor/jszip.min.js), движок engine.js. Без сети.
 const Z = typeof JSZip !== "undefined" ? JSZip : require("./vendor/jszip.min.js");
-const E = typeof depersonalize !== "undefined" ? { depersonalize, restore } : require("./engine.js");
+const E = typeof depersonalize !== "undefined" ? { depersonalize, restore, joinCells, splitCells } : require("./engine.js");
 
 // ---------- общее ----------
 const xmlUnesc = s => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16))).replace(/&amp;/g, "&");
@@ -343,6 +355,15 @@ function toCsv(rows, delim = ";") {
 const colIdx = ref => { const s = /^[A-Z]+/.exec(ref)[0]; let n = 0; for (const ch of s) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1 };
 const colName = i => { let s = ""; for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + (i - 1) % 26) + s; return s };
 const textsOf = xml => [...xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(m => xmlUnesc(m[1])).join("");
+function isDateFmt(id, codes) {
+  if ((id >= 14 && id <= 22) || (id >= 45 && id <= 47)) return true;
+  const c = codes[id]; return !!c && /[dmyhs]/i.test(c.replace(/"[^"]*"|\[[^\]]*\]|\\./g, ""));
+}
+function serialToText(n) {
+  const ms = Math.round((n - 25569) * 86400000), d = new Date(ms), p = (x, l = 2) => String(x).padStart(l, "0");
+  const day = d.getUTCFullYear() + "-" + p(d.getUTCMonth() + 1) + "-" + p(d.getUTCDate());
+  return n % 1 === 0 ? day : day + " " + p(d.getUTCHours()) + ":" + p(d.getUTCMinutes());
+}
 async function readXlsx(buf) {
   const zip = await Z.loadAsync(buf);
   const rd = async p => zip.file(p) ? await zip.file(p).async("string") : null;
@@ -351,26 +372,31 @@ async function readXlsx(buf) {
   const relTarget = {}; for (const m of rels.matchAll(/<Relationship\b[^>]*>/g)) { const id = /\bId="([^"]*)"/.exec(m[0]), t = /\bTarget="([^"]*)"/.exec(m[0]); if (id && t) relTarget[id[1]] = t[1] }
   const ss = await rd("xl/sharedStrings.xml");
   const shared = ss ? [...ss.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map(m => textsOf(m[1].replace(/<rPh\b[\s\S]*?<\/rPh>/g, ""))) : [];
+  const st = await rd("xl/styles.xml") || "", codes = {};
+  for (const m of st.matchAll(/<numFmt\b[^>]*>/g)) { const id = /numFmtId="(\d+)"/.exec(m[0]), c = /formatCode="([^"]*)"/.exec(m[0]); if (id && c) codes[+id[1]] = xmlUnesc(c[1]) }
+  const xfs = (/<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(st) || [, ""])[1];
+  const dateXf = [...xfs.matchAll(/<xf\b[^>]*>/g)].map(m => { const f = /numFmtId="(\d+)"/.exec(m[0]); return !!f && isDateFmt(+f[1], codes) });
   const sheets = [];
   for (const m of wb.matchAll(/<sheet\b[^>]*>/g)) {
     const name = /\bname="([^"]*)"/.exec(m[0]), rid = /\br:id="([^"]*)"/.exec(m[0]);
     if (!name || !rid || !relTarget[rid[1]]) continue;
     let t = relTarget[rid[1]]; t = t.startsWith("/") ? t.slice(1) : "xl/" + t;
     const xml = await rd(t); if (!xml) continue;
-    const rows = [];
-    for (const c of xml.matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-      const ref = /\br="([A-Z]+)(\d+)"/.exec(c[1]); if (!ref) continue;
-      const type = (/\bt="([^"]*)"/.exec(c[1]) || [])[1], inner = c[2] || "";
-      const v = (/<v>([\s\S]*?)<\/v>/.exec(inner) || [])[1];
-      let val = "";
-      if (type === "s") val = shared[+v] ?? "";
-      else if (type === "inlineStr") val = textsOf(inner);
-      else if (type === "str") val = v == null ? "" : xmlUnesc(v);
-      else if (type === "b") val = v === "1" ? "TRUE" : "FALSE";
-      else if (type === "e") val = "";
-      else if (v != null && v !== "" && Number.isFinite(+v)) val = +v;
-      const r = +ref[2] - 1, k = colIdx(ref[1]);
-      (rows[r] = rows[r] || [])[k] = val;
+    const rows = []; let rn = 0;
+    for (const rw of xml.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+      const rr = /\br="(\d+)"/.exec(rw[1]); rn = rr ? +rr[1] : rn + 1; let cn = -1;
+      for (const c of (rw[2] || "").matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+        const ref = /\br="([A-Z]+)\d+"/.exec(c[1]); cn = ref ? colIdx(ref[1]) : cn + 1;
+        const type = (/\bt="([^"]*)"/.exec(c[1]) || [])[1], sidx = (/\bs="(\d+)"/.exec(c[1]) || [])[1], inner = c[2] || "";
+        const v = (/<v>([\s\S]*?)<\/v>/.exec(inner) || [])[1];
+        let val = "";
+        if (type === "s") val = shared[+v] ?? "";
+        else if (type === "inlineStr") val = textsOf(inner);
+        else if (type === "str" || type === "e") val = v == null ? "" : xmlUnesc(v);
+        else if (type === "b") val = v === "1" ? "TRUE" : "FALSE";
+        else if (v != null && v !== "" && Number.isFinite(+v)) val = sidx != null && dateXf[+sidx] ? serialToText(+v) : +v;
+        if (val !== "") (rows[rn - 1] = rows[rn - 1] || [])[cn] = val;
+      }
     }
     const w = Math.max(0, ...rows.filter(Boolean).map(r => r.length));
     sheets.push({ name: xmlUnesc(name[1]), rows: Array.from(rows, r => Array.from({ length: w }, (_, i) => (r && r[i] != null) ? r[i] : "")) });
@@ -395,7 +421,7 @@ async function writeXlsx(rows, sheetName = "Лист1") {
 
 // ---------- колонки таблицы ----------
 const KINDS = ["ЧЕЛОВЕК", "ТЕЛЕФОН", "EMAIL", "ОРГ", "ЗНАЧЕНИЕ"];
-const HINTS = [["EMAIL", /mail|почт/i], ["ТЕЛЕФОН", /тел|phone|моб/i], ["ЧЕЛОВЕК", /фио|фамил|\bимя\b|сотрудник|менеджер|ответствен/i], ["ОРГ", /организ|компан|контрагент|клиент|поставщик|юрлиц/i]];
+const HINTS = [["ЗНАЧЕНИЕ", /парол|password|pwd|токен|token|секрет|secret|\bpin\b|пин-?код/i, "drop"], ["ЗНАЧЕНИЕ", /инн|унп|паспорт|iban|карт[аы]|адрес|счёт|счет/i, "key"], ["EMAIL", /mail|почт/i], ["ТЕЛЕФОН", /тел|phone|моб/i], ["ЧЕЛОВЕК", /фио|фамил|\bимя\b|сотрудник|менеджер|ответствен/i], ["ОРГ", /организ|компан|контрагент|клиент|поставщик|юрлиц/i]];
 // Подсказка по колонке; выбор остаётся за человеком.
 function detectColumns(rows, hasHeader = true) {
   const head = hasHeader ? rows[0] || [] : [], body = rows.slice(hasHeader ? 1 : 0), w = Math.max(0, ...rows.map(r => r.length));
@@ -407,7 +433,7 @@ function detectColumns(rows, hasHeader = true) {
     for (const v of sample) { const o = E.depersonalize(v, []).text.trim(); const m = /^\[([А-ЯЁA-Z]+)_\d+\]$/.exec(o); if (m) full[m[1]] = (full[m[1]] || 0) + 1 }
     const top = Object.entries(full).sort((a, b) => b[1] - a[1])[0];
     if (top && top[1] >= 0.6 * sample.length) { kind = KINDS.includes(top[0]) ? top[0] : "ЗНАЧЕНИЕ"; mode = "key" }
-    else { const h = HINTS.find(([, re]) => re.test(name)); if (h) { kind = h[0]; mode = "key" } }
+    else { const h = HINTS.find(([, re]) => re.test(name)); if (h) { kind = h[0]; mode = h[2] || "key" } }
     return { index: i, name, kind, mode, preview: vals.slice(0, 3) };
   });
 }
@@ -417,64 +443,101 @@ function anonymizeTable(rows, cols, { hasHeader = true, dict = [] } = {}) {
   const keyOf = (kind, v) => { const norm = String(v).trim().replace(/\s+/g, " ").toLowerCase(), rk = kind + "|" + norm;
     if (!reg.has(rk)) { n[kind] = (n[kind] || 0) + 1; counts[kind] = n[kind]; const k = kind + "_" + String(n[kind]).padStart(3, "0"); reg.set(rk, k); map.set(k, String(v).trim()) }
     return reg.get(rk) };
-  const out = rows.map(r => r.slice());
-  const start = hasHeader ? 1 : 0;
+  const out = rows.map(r => r.slice()), start = hasHeader ? 1 : 0, scan = [];
   for (const c of cols) {
     if (c.mode === "key") for (let r = start; r < out.length; r++) { const v = out[r][c.index]; if (v !== "" && v != null) out[r][c.index] = keyOf(c.kind, v) }
-    if (c.mode === "scan") {
-      const cells = []; for (let r = start; r < out.length; r++) cells.push(String(out[r][c.index] ?? ""));
-      const res = E.depersonalize(cells.join("\n"), dict), parts = res.text.split("\n");
-      for (const [t, v] of res.map) map.set(t, v);
-      for (const [k, v] of Object.entries(res.counts)) counts[k] = (counts[k] || 0) + v;
-      for (let r = start; r < out.length; r++) if (cells[r - start] !== "") out[r][c.index] = parts[r - start];
-    }
+    if (c.mode === "scan") for (let r = start; r < out.length; r++) if (out[r][c.index] !== "" && out[r][c.index] != null) scan.push([r, c.index]);
+    if (c.mode === "keep") for (let r = start; r < out.length; r++) if (/^[A-ZА-ЯЁ]+_\d{3,}$/.test(String(out[r][c.index] ?? ""))) { warn.push("в колонке «" + (rows[0] && hasHeader ? rows[0][c.index] : c.index + 1) + "» есть значения, похожие на коды (ЧЕЛОВЕК_001): при возврате они могут замениться"); break }
+  }
+  if (scan.length) { // все ячейки режима «внутри текста» одной пачкой: общая нумерация, переносы строк не мешают
+    const res = E.depersonalize(E.joinCells(scan.map(([r, c]) => String(out[r][c]))), dict), parts = E.splitCells(res.text, scan.length);
+    scan.forEach(([r, c], i) => { out[r][c] = parts[i] });
+    for (const [t, v] of res.map) map.set(t, v);
+    for (const [k, v] of Object.entries(res.counts)) counts[k] = (counts[k] || 0) + v;
   }
   const drop = new Set(cols.filter(c => c.mode === "drop").map(c => c.index));
   return { rows: out.map(r => r.filter((_, i) => !drop.has(i))), map, counts, warn };
 }
-function restoreRows(rows, map) { return rows.map(r => r.map(v => typeof v === "string" ? restoreKeys(v, map) : v)) }
+function restoreRows(rows, map) {
+  return rows.map(r => r.map(v => {
+    if (typeof v !== "string") return v;
+    const whole = /^[A-ZА-ЯЁ]+_\d{3,}$/.test(v) && map.get(v);
+    if (whole && /^(?:0|[1-9]\d{0,14})$/.test(whole)) return Number(whole); // число, которое было числом
+    return restoreKeys(v, map);
+  }));
+}
 
 // ---------- DOCX ----------
-const PARTS = /^word\/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml$/;
-// Прогоняет текст каждого абзаца через fn(массив строк) → массив строк. Оформление внутри изменённого абзаца берётся от его первого фрагмента.
-async function mapDocx(buf, fn) {
+const PARTS = /^(?:word|customXml)\/(?!_rels\/).*\.xml$/;
+const attrEsc = s => xmlEsc(s).replace(/"/g, "&quot;");
+// Группы текста в одной части: каждый абзац (в том числе вложенный в надпись) и каждый кусок внутри исправления (w:ins, w:del) — отдельно.
+function textGroups(xml) {
+  const re = /<(w|a):p[ >]|<\/(?:w|a):p>|<(w:ins|w:del)\b(?![^>]*\/>)[^>]*>|<\/(?:w:ins|w:del)>|<(w:t|w:delText|a:t)\b(?![^>]*\/>)([^>]*)>([\s\S]*?)<\/\3>/g;
+  const paras = [], chg = [], groups = new Map(); let pid = 0, cid = 0;
+  for (const m of xml.matchAll(re)) {
+    if (m[1]) paras.push(++pid);
+    else if (m[0].startsWith("</w:ins") || m[0].startsWith("</w:del")) chg.pop();
+    else if (m[2]) chg.push(++cid);
+    else if (m[0].startsWith("</")) paras.pop();
+    else {
+      const key = (paras[paras.length - 1] || 0) + ":" + (chg[chg.length - 1] || 0);
+      const run = { open: m.index, ca: m.index + 1 + m[3].length + m[4].length + 1, name: m[3], attrs: m[4], raw: m[5] };
+      run.cb = run.ca + m[5].length; run.end = run.cb + m[3].length + 3;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(run);
+    }
+  }
+  return [...groups.values()];
+}
+// Прогоняет текст каждой группы через fn(массив строк) → массив строк. Оформление внутри изменённого абзаца берётся от его первого фрагмента.
+async function mapDocx(buf, fn, { clean = false } = {}) {
   const zip = await Z.loadAsync(buf);
   if (!zip.file("word/document.xml")) throw new Error("это не файл Word (.docx)");
-  const items = []; // {part, xml, paras:[{start,end,text,runs}]}
-  for (const name of Object.keys(zip.files).filter(n => PARTS.test(n))) {
-    const xml = await zip.file(name).async("string"), paras = [];
-    for (const m of xml.matchAll(/<w:p[ >][\s\S]*?<\/w:p>/g)) {
-      const runs = [...m[0].matchAll(/(<w:(t|delText)\b(?![^>]*\/>)[^>]*>)([\s\S]*?)(<\/w:\2>)/g)];
-      if (!runs.length) continue;
-      paras.push({ start: m.index, end: m.index + m[0].length, src: m[0], runs, text: runs.map(r => xmlUnesc(r[3])).join("") });
+  const items = [], warn = [], names = Object.keys(zip.files).filter(n => !zip.files[n].dir);
+  for (const name of names) {
+    if (PARTS.test(name)) {
+      const xml = await zip.file(name).async("string"), groups = textGroups(xml);
+      items.push({ name, xml, kind: "xml", groups, texts: groups.map(g => xmlUnesc(g.map(r => r.raw).join(""))) });
+    } else if (/\.rels$/.test(name)) { // внешние ссылки (mailto:, адреса) тоже могут содержать данные
+      const xml = await zip.file(name).async("string"), tags = [...xml.matchAll(/<Relationship\b[^>]*>/g)].filter(m => /TargetMode="External"/.test(m[0]) && /\bTarget="[^"]*"/.test(m[0]));
+      if (tags.length) items.push({ name, xml, kind: "rel", tags, texts: tags.map(m => xmlUnesc(/\bTarget="([^"]*)"/.exec(m[0])[1])) });
     }
-    items.push({ name, xml, paras });
   }
-  const all = items.flatMap(i => i.paras), res = fn(all.map(p => p.text));
+  const all = items.flatMap(i => i.texts), res = fn(all);
   if (res.length !== all.length) throw new Error("внутренняя ошибка: число абзацев изменилось");
   let k = 0, changed = 0;
   for (const it of items) {
-    let out = "", pos = 0;
-    for (const p of it.paras) {
-      const nt = res[k++]; out += it.xml.slice(pos, p.start); pos = p.end;
-      if (nt === p.text) { out += p.src; continue }
-      changed++; let i = 0;
-      out += p.src.replace(/(<w:(t|delText)\b(?![^>]*\/>))([^>]*>)([\s\S]*?)(<\/w:\2>)/g, (_, a, tag, attrs, _body, close) =>
-        i++ === 0 ? a + " xml:space=\"preserve\"" + attrs.replace(/\s*xml:space="[^"]*"/, "") + xmlEsc(nt) + close : a + attrs + close);
-    }
-    zip.file(it.name, out + it.xml.slice(pos));
+    const edits = []; // [от, до, новый текст]
+    if (it.kind === "xml") for (const g of it.groups) {
+      const nt = res[k], old = all[k]; k++;
+      if (nt === old) continue; changed++;
+      const f = g[0];
+      edits.push([f.open, f.end, "<" + f.name + ' xml:space="preserve"' + f.attrs.replace(/\s*xml:space="[^"]*"/, "") + ">" + xmlEsc(nt) + "</" + f.name + ">"]);
+      for (const r of g.slice(1)) edits.push([r.ca, r.cb, ""]);
+    } else it.tags.forEach(m => {
+      const nt = res[k], old = all[k]; k++;
+      if (nt !== old) { changed++; edits.push([m.index, m.index + m[0].length, m[0].replace(/\bTarget="[^"]*"/, 'Target="' + attrEsc(nt) + '"')]) }
+    });
+    let xml = it.xml;
+    for (const [a, b, t] of edits.sort((x, y) => y[0] - x[0])) xml = xml.slice(0, a) + t + xml.slice(b);
+    if (clean && it.kind === "xml") xml = xml.replace(/\b(w:author|w15:author)="[^"]*"/g, '$1="Автор"').replace(/\bw:initials="[^"]*"/g, 'w:initials=""').replace(/<w15:person\b[\s\S]*?<\/w15:person>/g, "");
+    if (xml !== it.xml) zip.file(it.name, xml);
   }
-  // автор и редактор в свойствах файла
-  const core = zip.file("docProps/core.xml");
-  if (core) zip.file("docProps/core.xml", (await core.async("string")).replace(/(<(dc:creator|cp:lastModifiedBy)>)[\s\S]*?(<\/\2>)/g, "$1$3"));
-  return { data: await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" }), changed };
+  if (clean) { // свойства файла: автор, редактор, название, организация
+    const blank = async (p, tags) => { const f = zip.file(p); if (f) zip.file(p, (await f.async("string")).replace(new RegExp("(<(" + tags + ")(?:\\s[^>]*)?>)[\\s\\S]*?(</\\2>)", "g"), "$1$3")) };
+    await blank("docProps/core.xml", "dc:creator|cp:lastModifiedBy|dc:title|dc:subject|dc:description|cp:keywords|cp:category");
+    await blank("docProps/app.xml", "Company|Manager");
+    const emb = names.filter(n => /^word\/(embeddings|activeX)\//.test(n)), img = names.filter(n => /^word\/media\//.test(n));
+    if (emb.length) warn.push("в документе есть вложенные файлы (" + emb.length + "): они не обработаны, удалите их или проверьте отдельно");
+    if (img.length) warn.push("в документе есть картинки (" + img.length + "): текст на них не обрабатывается");
+  }
+  return { data: await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" }), changed, warn };
 }
 async function anonymizeDocx(buf, dict = []) {
-  let r;
-  let preview = [];
-  const o = await mapDocx(buf, texts => { r = E.depersonalize(texts.join("\n"), dict); const out = r.text.split("\n");
-    preview = texts.map((t, i) => [t, out[i]]).filter(([a, b]) => a !== b).slice(0, 6); return out });
-  return { data: o.data, map: r.map, counts: r.counts, warn: r.warn, changed: o.changed, preview };
+  let r, preview = [];
+  const o = await mapDocx(buf, texts => { r = E.depersonalize(E.joinCells(texts), dict); const out = E.splitCells(r.text, texts.length);
+    preview = texts.map((t, i) => [t, out[i]]).filter(([a, b]) => a !== b).slice(0, 6); return out }, { clean: true });
+  return { data: o.data, map: r.map, counts: r.counts, warn: [...r.warn.filter(w => !/словарь пуст/.test(w)), ...o.warn], changed: o.changed, preview };
 }
 async function restoreDocx(buf, map) { return (await mapDocx(buf, texts => texts.map(t => restoreKeys(t, map)))).data }
 
@@ -500,7 +563,7 @@ if (typeof module !== "undefined") module.exports = api;
 (function () {
   const $ = id => document.getElementById(id);
   const dict = () => $("dict").value.split("\n");
-  let MAP = new Map();                       // ключ текущей работы (в памяти страницы)
+  const M = { text: new Map(), xl: new Map(), doc: new Map() }; // у каждой вкладки свой ключ (в памяти страницы)
   const X = { rows: null, sheets: null, name: "таблица", csv: false, delim: ";", cols: [], result: null };
   const D = { buf: null, name: "документ", result: null };
 
@@ -512,13 +575,13 @@ if (typeof module !== "undefined") module.exports = api;
   const baseName = f => f.replace(/\.[^.]+$/, "");
   const counts = c => Object.entries(c).map(([k, v]) => k + ": " + v).join(", ") || "ничего не найдено";
   const TYPES = { xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", csv: "text/csv;charset=utf-8", json: "application/json" };
-  const saveKey = () => { if (!MAP.size) return false; download("ключ-обезличивания.json", mapToJson(MAP), TYPES.json); return true };
-  async function loadKey(file, msgId) {
+  const saveKey = tab => { if (!M[tab].size) return false; download("ключ-обезличивания.json", mapToJson(M[tab]), TYPES.json); return true };
+  async function loadKey(file, msgId, tab) {
     if (!file) return;
-    try { MAP = mapFromJson(await file.text()); say(msgId, "Ключ загружен, значений: " + MAP.size, "ok") }
+    try { M[tab] = mapFromJson(await file.text()); say(msgId, "Ключ загружен, значений: " + M[tab].size, "ok") }
     catch (e) { say(msgId, "Это не файл-ключ, который сохранила эта страница. Выберите файл «ключ-обезличивания.json».", "bad") }
   }
-  const needKey = id => { if (MAP.size) return true; say(id, "Нет ключа. Сначала скройте данные на этой странице или загрузите файл-ключ.", "bad"); return false };
+  const needKey = (id, tab) => { if (M[tab].size) return true; say(id, "Нет ключа. Сначала скройте данные на этой странице или загрузите файл-ключ.", "bad"); return false };
   async function readTable(file) {
     if (/\.csv$/i.test(file.name)) {
       const buf = await file.arrayBuffer(); let t = new TextDecoder("utf-8").decode(buf);
@@ -539,15 +602,15 @@ if (typeof module !== "undefined") module.exports = api;
   $("go").onclick = () => {
     if (!$("src").value.trim()) return say("rep", "Сначала вставьте текст в поле выше.", "bad");
     try {
-      const r = depersonalize($("src").value, dict()); MAP = r.map; $("out").value = r.text;
+      const r = depersonalize($("src").value, dict()); M.text = r.map; $("out").value = r.text;
       say("rep", "Заменено: " + counts(r.counts) + (r.warn.length ? "\nВнимание: " + r.warn.join("; ") : "") + "\nПроверьте копию глазами перед отправкой.", r.warn.length ? "warn" : "ok");
       $("copy").disabled = $("savekey-text").disabled = false;
     } catch (e) { fail("rep", e) }
   };
   $("copy").onclick = async () => { try { await navigator.clipboard.writeText($("out").value) } catch (e) { $("out").select(); document.execCommand("copy") } say("m-text", "Скопировано. Вставьте в ИИ.", "ok") };
-  $("savekey-text").onclick = () => { if (saveKey()) say("m-text", "Ключ сохранён. Держите файл у себя: в нём настоящие данные.", "ok") };
-  $("keyfile-text").onchange = e => loadKey(e.target.files[0], "m-text");
-  $("back").onclick = () => { if (!$("ans").value.trim()) return say("m-text", "Вставьте ответ ИИ.", "bad"); if (!needKey("m-text")) return; $("res").value = restoreKeys($("ans").value, MAP); say("m-text", "Готово: настоящие значения возвращены.", "ok") };
+  $("savekey-text").onclick = () => { if (saveKey("text")) say("m-text", "Ключ сохранён. Держите файл у себя: в нём настоящие данные.", "ok") };
+  $("keyfile-text").onchange = e => loadKey(e.target.files[0], "m-text", "text");
+  $("back").onclick = () => { if (!$("ans").value.trim()) return say("m-text", "Вставьте ответ ИИ.", "bad"); if (!needKey("m-text", "text")) return; $("res").value = restoreKeys($("ans").value, M.text); say("m-text", "Готово: настоящие значения возвращены.", "ok") };
 
   // ---- Excel ----
   const KIND_LABEL = { "ЧЕЛОВЕК": "ФИО", "ТЕЛЕФОН": "Телефон", "EMAIL": "Почта", "ОРГ": "Организация", "ЗНАЧЕНИЕ": "Другое" };
@@ -581,21 +644,21 @@ if (typeof module !== "undefined") module.exports = api;
     rows.slice(0, 6).forEach((r, i) => { const tr = t.insertRow(); r.forEach(v => { const c = document.createElement(i === 0 && $("xl-head").checked ? "th" : "td"); c.textContent = v; tr.append(c) }) }); tw.append(t); w.append(h, tw); return w };
   $("xl-go").onclick = () => {
     try {
-      const r = anonymizeTable(X.rows, X.cols, { hasHeader: $("xl-head").checked, dict: dict() }); MAP = r.map; X.result = r.rows;
+      const r = anonymizeTable(X.rows, X.cols, { hasHeader: $("xl-head").checked, dict: dict() }); M.xl = r.map; X.result = r.rows;
       const p = $("xl-prev"); p.textContent = ""; const g = document.createElement("div"); g.className = "two"; g.append(prevTable(X.rows, "Было (первые строки)"), prevTable(r.rows, "Стало: это уйдёт в ИИ")); p.append(g);
-      $("xl-dl").disabled = $("xl-key").disabled = false; say("m-xl", "Готово. Заменено значений: " + (counts(r.counts)) + ". Посмотрите таблицу «Стало» и скачайте копию.", "ok");
+      $("xl-dl").disabled = $("xl-key").disabled = false; say("m-xl", "Готово. Заменено значений: " + counts(r.counts) + ". Посмотрите таблицу «Стало» и скачайте копию." + (r.warn.length ? "\nВнимание: " + r.warn.join("; ") : ""), r.warn.length ? "warn" : "ok");
     } catch (e) { fail("m-xl", e) }
   };
   $("xl-dl").onclick = async () => { try { const n = X.name + "-безопасная-копия"; if (X.csv) download(n + ".csv", toCsv(X.result, X.delim), TYPES.csv); else download(n + ".xlsx", await writeXlsx(X.result, X.sheets[X.sheetIdx].name), TYPES.xlsx) } catch (e) { fail("m-xl", e) } };
-  $("xl-key").onclick = () => { if (saveKey()) say("m-xl", "Ключ сохранён. Держите файл у себя: в нём настоящие данные.", "ok") };
-  $("keyfile-xl").onchange = e => loadKey(e.target.files[0], "m-xl");
+  $("xl-key").onclick = () => { if (saveKey("xl")) say("m-xl", "Ключ сохранён. Держите файл у себя: в нём настоящие данные.", "ok") };
+  $("keyfile-xl").onchange = e => loadKey(e.target.files[0], "m-xl", "xl");
   $("xl-back").onclick = async () => {
-    if (!needKey("m-xl")) return;
+    if (!needKey("m-xl", "xl")) return;
     try {
       const f = $("xl-ansfile").files[0];
-      if (f) { const t = await readTable(f), rows = restoreRows(t.sheets[0].rows, MAP), n = baseName(f.name) + "-с-именами";
+      if (f) { const t = await readTable(f), rows = restoreRows(t.sheets[0].rows, M.xl), n = baseName(f.name) + "-с-именами";
         if (t.csv) download(n + ".csv", toCsv(rows, t.delim), TYPES.csv); else download(n + ".xlsx", await writeXlsx(rows, t.sheets[0].name), TYPES.xlsx); say("m-xl", "Готово: файл с настоящими значениями скачан.", "ok") }
-      else if ($("xl-anstext").value.trim()) { const r = $("xl-res"); r.hidden = false; r.value = restoreKeys($("xl-anstext").value, MAP); say("m-xl", "Готово: настоящие значения возвращены в тексте.", "ok") }
+      else if ($("xl-anstext").value.trim()) { const r = $("xl-res"); r.hidden = false; r.value = restoreKeys($("xl-anstext").value, M.xl); say("m-xl", "Готово: настоящие значения возвращены в тексте.", "ok") }
       else say("m-xl", "Выберите файл с ответом ИИ или вставьте текст ответа.", "bad");
     } catch (e) { fail("m-xl", e) }
   };
@@ -612,18 +675,18 @@ if (typeof module !== "undefined") module.exports = api;
   $("doc-file").onchange = e => e.target.files[0] && openDoc(e.target.files[0]);
   $("doc-go").onclick = async () => {
     try {
-      const r = await anonymizeDocx(D.buf, dict()); MAP = r.map; D.result = r.data;
+      const r = await anonymizeDocx(D.buf, dict()); M.doc = r.map; D.result = r.data;
       const sample = r.preview.map(([a, b]) => "Было: " + a.slice(0, 160) + "\nСтало: " + b.slice(0, 160)).join("\n\n");
       say("doc-rep", "Заменено: " + counts(r.counts) + ". Изменено абзацев: " + r.changed + (r.warn.length ? "\nВнимание: " + r.warn.join("; ") : "") + (sample ? "\n\nНапример:\n" + sample : "") + "\n\nОткройте скачанную копию в Word и проверьте глазами.", r.warn.length ? "warn" : "ok");
       $("doc-dl").disabled = $("doc-key").disabled = false;
     } catch (e) { fail("doc-rep", e) }
   };
   $("doc-dl").onclick = () => download(D.name + "-безопасная-копия.docx", D.result, TYPES.docx);
-  $("doc-key").onclick = () => { if (saveKey()) say("m-doc", "Ключ сохранён. Держите файл у себя: в нём настоящие данные.", "ok") };
-  $("keyfile-doc").onchange = e => loadKey(e.target.files[0], "m-doc");
+  $("doc-key").onclick = () => { if (saveKey("doc")) say("m-doc", "Ключ сохранён. Держите файл у себя: в нём настоящие данные.", "ok") };
+  $("keyfile-doc").onchange = e => loadKey(e.target.files[0], "m-doc", "doc");
   $("doc-back").onclick = async () => {
-    if (!needKey("m-doc")) return; const f = $("doc-ansfile").files[0]; if (!f) return say("m-doc", "Выберите файл .docx с ответом ИИ.", "bad");
-    try { download(baseName(f.name) + "-с-именами.docx", await restoreDocx(await f.arrayBuffer(), MAP), TYPES.docx); say("m-doc", "Готово: файл с настоящими значениями скачан.", "ok") } catch (e) { fail("m-doc", e) }
+    if (!needKey("m-doc", "doc")) return; const f = $("doc-ansfile").files[0]; if (!f) return say("m-doc", "Выберите файл .docx с ответом ИИ.", "bad");
+    try { download(baseName(f.name) + "-с-именами.docx", await restoreDocx(await f.arrayBuffer(), M.doc), TYPES.docx); say("m-doc", "Готово: файл с настоящими значениями скачан.", "ok") } catch (e) { fail("m-doc", e) }
   };
   $("ex-doc").onclick = async () => {
     const data = await makeDocx({ author: "Сидоров И. П.", paragraphs: ["Договор поставки", "Заказчик: ООО «Ромашка», контактное лицо Иван Петрович Сидоров, тел. +375 29 123-45-67, почта ivan.sidorov@example.test.", "Бухгалтер Козлова Мария Сергеевна подготовит акт до конца месяца. Сидорову нужно подписать его первым."], table: [["Сотрудник", "Телефон"], ["Пётр Иванов", "+375 44 765-43-21"]] });
