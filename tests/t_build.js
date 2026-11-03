@@ -20,5 +20,5 @@ const off = fs.readFileSync(path.join(root, "office.js"), "utf8"), eng = require
 const m = /\{ ([^}]*) \} : require/.exec(off);
 assert.ok(m, "не нашёл привязку движка в office.js");
 for (const n of m[1].split(", ")) assert.ok(typeof eng[n] === "function", n + " нет в экспорте engine.js");
-for (const n of Object.keys(eng)) if (!m[1].split(", ").includes(n) && /joinCells|splitCells|depersonalize|restore/.test(n)) assert.fail(n + " не подключён в браузерной привязке office.js");
+for (const n of Object.keys(eng)) if (!m[1].split(", ").includes(n) && /depersonalize|restore/.test(n)) assert.fail(n + " не подключён в браузерной привязке office.js");
 console.log("привязка движка в браузере: ok");

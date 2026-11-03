@@ -1,6 +1,6 @@
 // Таблицы (CSV, XLSX) и документы (DOCX) локально. Нужен JSZip (vendor/jszip.min.js), движок engine.js. Без сети.
 const Z = typeof JSZip !== "undefined" ? JSZip : require("./vendor/jszip.min.js");
-const E = typeof depersonalize !== "undefined" ? { depersonalize, restore, joinCells, splitCells } : require("./engine.js");
+const E = typeof depersonalize !== "undefined" ? { depersonalize, depersonalizeMany, restore } : require("./engine.js");
 
 // ---------- общее ----------
 const xmlUnesc = s => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16))).replace(/&amp;/g, "&");
@@ -36,14 +36,24 @@ function toCsv(rows, delim = ";") {
 const colIdx = ref => { const s = /^[A-Z]+/.exec(ref)[0]; let n = 0; for (const ch of s) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1 };
 const colName = i => { let s = ""; for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + (i - 1) % 26) + s; return s };
 const textsOf = xml => [...xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(m => xmlUnesc(m[1])).join("");
-function isDateFmt(id, codes) {
-  if ((id >= 14 && id <= 22) || (id >= 45 && id <= 47)) return true;
-  const c = codes[id]; return !!c && /[dmyhs]/i.test(c.replace(/"[^"]*"|\[[^\]]*\]|\\./g, ""));
+// Что за формат ячейки: date, datetime, time, elapsed (часы больше суток) или null.
+function fmtKind(id, codes) {
+  if (id >= 14 && id <= 17) return "date";
+  if (id === 22) return "datetime";
+  if (id === 46) return "elapsed";
+  if ((id >= 18 && id <= 21) || id === 45 || id === 47) return "time";
+  const c = codes[id]; if (!c) return null;
+  if (/\[(?:h+|m+|s+)\]/i.test(c)) return "elapsed";
+  const x = c.replace(/"[^"]*"|\[[^\]]*\]|\\./g, ""), t = /[hs]/i.test(x), d = /[dy]/i.test(x) || (!t && /m/i.test(x));
+  return d && t ? "datetime" : d ? "date" : t ? "time" : null;
 }
-function serialToText(n) {
-  const ms = Math.round((n - 25569) * 86400000), d = new Date(ms), p = (x, l = 2) => String(x).padStart(l, "0");
+function serialToText(n, kind, d1904) {
+  const p = (x, l = 2) => String(x).padStart(l, "0");
+  if (kind === "elapsed") { const m = Math.round(n * 1440); return Math.floor(m / 60) + ":" + p(m % 60) }
+  const ms = Math.round((n + (d1904 ? 1462 : 0) - 25569) * 86400000), d = new Date(ms), hm = p(d.getUTCHours()) + ":" + p(d.getUTCMinutes());
+  if (kind === "time") return hm;
   const day = d.getUTCFullYear() + "-" + p(d.getUTCMonth() + 1) + "-" + p(d.getUTCDate());
-  return n % 1 === 0 ? day : day + " " + p(d.getUTCHours()) + ":" + p(d.getUTCMinutes());
+  return n % 1 === 0 && kind === "date" ? day : day + " " + hm;
 }
 async function readXlsx(buf) {
   const zip = await Z.loadAsync(buf);
@@ -56,7 +66,7 @@ async function readXlsx(buf) {
   const st = await rd("xl/styles.xml") || "", codes = {};
   for (const m of st.matchAll(/<numFmt\b[^>]*>/g)) { const id = /numFmtId="(\d+)"/.exec(m[0]), c = /formatCode="([^"]*)"/.exec(m[0]); if (id && c) codes[+id[1]] = xmlUnesc(c[1]) }
   const xfs = (/<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(st) || [, ""])[1];
-  const dateXf = [...xfs.matchAll(/<xf\b[^>]*>/g)].map(m => { const f = /numFmtId="(\d+)"/.exec(m[0]); return !!f && isDateFmt(+f[1], codes) });
+  const dateXf = [...xfs.matchAll(/<xf\b[^>]*>/g)].map(m => { const f = /numFmtId="(\d+)"/.exec(m[0]); return f ? fmtKind(+f[1], codes) : null }), d1904 = /<workbookPr\b[^>]*\bdate1904="(?:1|true)"/i.test(wb);
   const sheets = [];
   for (const m of wb.matchAll(/<sheet\b[^>]*>/g)) {
     const name = /\bname="([^"]*)"/.exec(m[0]), rid = /\br:id="([^"]*)"/.exec(m[0]);
@@ -75,7 +85,7 @@ async function readXlsx(buf) {
         else if (type === "inlineStr") val = textsOf(inner);
         else if (type === "str" || type === "e") val = v == null ? "" : xmlUnesc(v);
         else if (type === "b") val = v === "1" ? "TRUE" : "FALSE";
-        else if (v != null && v !== "" && Number.isFinite(+v)) val = sidx != null && dateXf[+sidx] ? serialToText(+v) : +v;
+        else if (v != null && v !== "" && Number.isFinite(+v)) val = sidx != null && dateXf[+sidx] ? serialToText(+v, dateXf[+sidx], d1904) : +v;
         if (val !== "") (rows[rn - 1] = rows[rn - 1] || [])[cn] = val;
       }
     }
@@ -102,7 +112,8 @@ async function writeXlsx(rows, sheetName = "Лист1") {
 
 // ---------- колонки таблицы ----------
 const KINDS = ["ЧЕЛОВЕК", "ТЕЛЕФОН", "EMAIL", "ОРГ", "ЗНАЧЕНИЕ"];
-const HINTS = [["ЗНАЧЕНИЕ", /парол|password|pwd|токен|token|секрет|secret|\bpin\b|пин-?код/i, "drop"], ["ЗНАЧЕНИЕ", /инн|унп|паспорт|iban|карт[аы]|адрес|счёт|счет/i, "key"], ["EMAIL", /mail|почт/i], ["ТЕЛЕФОН", /тел|phone|моб/i], ["ЧЕЛОВЕК", /фио|фамил|\bимя\b|сотрудник|менеджер|ответствен/i], ["ОРГ", /организ|компан|контрагент|клиент|поставщик|юрлиц/i]];
+const B = "(?<![а-яёa-z])"; // начало слова: «расчет» не «счёт», «показатель» не «тел»
+const HINTS = [["ЗНАЧЕНИЕ", new RegExp(`${B}(?:парол|password|pwd|токен|token|секрет|secret|pin\\b|пин-?код)`, "i"), "drop"], ["ЗНАЧЕНИЕ", new RegExp(`${B}(?:инн|унп|паспорт|iban|карт[аы]|адрес|сч[её]т)`, "i"), "key"], ["EMAIL", new RegExp(`${B}(?:e-?mail|почт)`, "i")], ["ТЕЛЕФОН", new RegExp(`${B}(?:тел(?![а-яё])|телеф|phone|моб)`, "i")], ["ЧЕЛОВЕК", new RegExp(`${B}(?:фио|фамил|имя(?![а-яё])|сотрудник|менеджер|ответствен)`, "i")], ["ОРГ", new RegExp(`${B}(?:организ|компан|контрагент|клиент|поставщик|юрлиц)`, "i")]];
 // Подсказка по колонке; выбор остаётся за человеком.
 function detectColumns(rows, hasHeader = true) {
   const head = hasHeader ? rows[0] || [] : [], body = rows.slice(hasHeader ? 1 : 0), w = Math.max(0, ...rows.map(r => r.length));
@@ -121,8 +132,8 @@ function detectColumns(rows, hasHeader = true) {
 // Применение выбора: keep / key (ключи вместо значений) / drop (убрать колонку) / scan (найти и скрыть внутри текста ячеек).
 function anonymizeTable(rows, cols, { hasHeader = true, dict = [] } = {}) {
   const map = new Map(), reg = new Map(), n = {}, counts = {}, warn = [];
-  const keyOf = (kind, v) => { const norm = String(v).trim().replace(/\s+/g, " ").toLowerCase(), rk = kind + "|" + norm;
-    if (!reg.has(rk)) { n[kind] = (n[kind] || 0) + 1; counts[kind] = n[kind]; const k = kind + "_" + String(n[kind]).padStart(3, "0"); reg.set(rk, k); map.set(k, String(v).trim()) }
+  const keyOf = (kind, v) => { const num = typeof v === "number", norm = String(v).trim().replace(/\s+/g, " ").toLowerCase(), rk = kind + "|" + (num ? "#" : "") + norm;
+    if (!reg.has(rk)) { n[kind] = (n[kind] || 0) + 1; counts[kind] = n[kind]; const k = kind + "_" + String(n[kind]).padStart(3, "0"); reg.set(rk, k); map.set(k, String(v).trim()); if (num) map.set("#число:" + k, "1") } // число помечаем, чтобы вернуть числом
     return reg.get(rk) };
   const out = rows.map(r => r.slice()), start = hasHeader ? 1 : 0, scan = [];
   for (const c of cols) {
@@ -131,8 +142,8 @@ function anonymizeTable(rows, cols, { hasHeader = true, dict = [] } = {}) {
     if (c.mode === "keep") for (let r = start; r < out.length; r++) if (/^[A-ZА-ЯЁ]+_\d{3,}$/.test(String(out[r][c.index] ?? ""))) { warn.push("в колонке «" + (rows[0] && hasHeader ? rows[0][c.index] : c.index + 1) + "» есть значения, похожие на коды (ЧЕЛОВЕК_001): при возврате они могут замениться"); break }
   }
   if (scan.length) { // все ячейки режима «внутри текста» одной пачкой: общая нумерация, переносы строк не мешают
-    const res = E.depersonalize(E.joinCells(scan.map(([r, c]) => String(out[r][c]))), dict), parts = E.splitCells(res.text, scan.length);
-    scan.forEach(([r, c], i) => { out[r][c] = parts[i] });
+    const res = E.depersonalizeMany(scan.map(([r, c]) => String(out[r][c])), dict);
+    scan.forEach(([r, c], i) => { out[r][c] = res.texts[i] });
     for (const [t, v] of res.map) map.set(t, v);
     for (const [k, v] of Object.entries(res.counts)) counts[k] = (counts[k] || 0) + v;
   }
@@ -142,59 +153,78 @@ function anonymizeTable(rows, cols, { hasHeader = true, dict = [] } = {}) {
 function restoreRows(rows, map) {
   return rows.map(r => r.map(v => {
     if (typeof v !== "string") return v;
-    const whole = /^[A-ZА-ЯЁ]+_\d{3,}$/.test(v) && map.get(v);
-    if (whole && /^(?:0|[1-9]\d{0,14})$/.test(whole)) return Number(whole); // число, которое было числом
+    if (map.has("#число:" + v) && Number.isFinite(+map.get(v))) return Number(map.get(v)); // было числом
     return restoreKeys(v, map);
   }));
 }
 
 // ---------- DOCX ----------
-const PARTS = /^(?:word|customXml)\/(?!_rels\/).*\.xml$/;
+const PARA = /^word\/(?!_rels\/|charts\/|diagrams\/).*\.xml$/;                                  // части с абзацами
+const FLAT = /^(?:customXml\/(?!_rels\/).*\.xml|word\/(?:charts|diagrams)\/(?!_rels\/).*\.xml|docProps\/custom\.xml)$/; // части, где весь текст между тегами
 const attrEsc = s => xmlEsc(s).replace(/"/g, "&quot;");
-// Группы текста в одной части: каждый абзац (в том числе вложенный в надпись) и каждый кусок внутри исправления (w:ins, w:del) — отдельно.
+// Группы текста части: живой текст абзаца (с вставками w:ins) — одна группа; удалённый текст (w:delText) — своя группа на каждое w:del; w:instrText — по одному.
 function textGroups(xml) {
-  const re = /<(w|a):p[ >]|<\/(?:w|a):p>|<(w:ins|w:del)\b(?![^>]*\/>)[^>]*>|<\/(?:w:ins|w:del)>|<(w:t|w:delText|a:t)\b(?![^>]*\/>)([^>]*)>([\s\S]*?)<\/\3>/g;
-  const paras = [], chg = [], groups = new Map(); let pid = 0, cid = 0;
+  const re = /<(w|a):p[ >]|<\/(?:w|a):p>|<w:del\b(?![^>]*\/>)[^>]*>|<\/w:del>|<w:ins\b(?![^>]*\/>)[^>]*>|<\/w:ins>|<(w:t|w:delText|a:t|w:instrText)\b(?![^>]*\/>)([^>]*)>([\s\S]*?)<\/\2>/g;
+  const paras = [], dels = []; let pid = 0, did = 0, ins = 0, iid = 0; const groups = new Map();
   for (const m of xml.matchAll(re)) {
+    const t = m[0];
     if (m[1]) paras.push(++pid);
-    else if (m[0].startsWith("</w:ins") || m[0].startsWith("</w:del")) chg.pop();
-    else if (m[2]) chg.push(++cid);
-    else if (m[0].startsWith("</")) paras.pop();
+    else if (t === "</w:p>" || t === "</a:p>") paras.pop();
+    else if (/^<w:del[\s>]/.test(t)) dels.push(++did);
+    else if (t === "</w:del>") dels.pop();
+    else if (/^<w:ins[\s>]/.test(t)) ins++;
+    else if (t === "</w:ins>") ins--;
     else {
-      const key = (paras[paras.length - 1] || 0) + ":" + (chg[chg.length - 1] || 0);
-      const run = { open: m.index, ca: m.index + 1 + m[3].length + m[4].length + 1, name: m[3], attrs: m[4], raw: m[5] };
-      run.cb = run.ca + m[5].length; run.end = run.cb + m[3].length + 3;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(run);
+      const name = m[2], key = name === "w:instrText" ? "i" + ++iid : name === "w:delText" ? "d" + (dels[dels.length - 1] || 0) : "p" + (paras[paras.length - 1] || 0);
+      const run = { open: m.index, ca: m.index + 1 + name.length + m[3].length + 1, name, attrs: m[3], raw: m[4] };
+      run.cb = run.ca + m[4].length; run.end = run.cb + name.length + 3;
+      if (!groups.has(key)) groups.set(key, { runs: [], chg: false });
+      const g = groups.get(key); g.runs.push(run); if (ins > 0) g.chg = true;
     }
   }
   return [...groups.values()];
 }
-// Прогоняет текст каждой группы через fn(массив строк) → массив строк. Оформление внутри изменённого абзаца берётся от его первого фрагмента.
+// Подписи картинок и поля содержимого: descr/title у рисунков, alias/tag у элементов управления.
+function attrSlots(xml) {
+  const out = [];
+  for (const m of xml.matchAll(/<[\w:]*(?:docPr|cNvPr)\b[^>]*>/g)) for (const a of m[0].matchAll(/\b(descr|title)="([^"]*)"/g)) if (a[2].trim()) out.push({ a: m.index + a.index + a[0].indexOf('"') + 1, b: m.index + a.index + a[0].length - 1, raw: a[2] });
+  for (const m of xml.matchAll(/<w:(?:alias|tag)\b[^>]*>/g)) for (const a of m[0].matchAll(/\bw:val="([^"]*)"/g)) if (a[1].trim()) out.push({ a: m.index + a.index + a[0].indexOf('"') + 1, b: m.index + a.index + a[0].length - 1, raw: a[1] });
+  return out;
+}
+// Прогоняет тексты документа через fn(массив строк) → массив строк (общая нумерация меток по всем частям).
 async function mapDocx(buf, fn, { clean = false } = {}) {
   const zip = await Z.loadAsync(buf);
-  if (!zip.file("word/document.xml")) throw new Error("это не файл Word (.docx)");
+  const doc = zip.file("word/document.xml");
+  if (!doc || !/<w:(?:document|body)\b/.test(await doc.async("string"))) throw new Error("это не файл Word (.docx) или в нём нестандартная разметка");
   const items = [], warn = [], names = Object.keys(zip.files).filter(n => !zip.files[n].dir);
   for (const name of names) {
-    if (PARTS.test(name)) {
-      const xml = await zip.file(name).async("string"), groups = textGroups(xml);
-      items.push({ name, xml, kind: "xml", groups, texts: groups.map(g => xmlUnesc(g.map(r => r.raw).join(""))) });
-    } else if (/\.rels$/.test(name)) { // внешние ссылки (mailto:, адреса) тоже могут содержать данные
+    if (PARA.test(name)) {
+      const xml = await zip.file(name).async("string"), groups = textGroups(xml), slots = attrSlots(xml);
+      items.push({ name, xml, kind: "xml", groups, slots, texts: [...groups.map(g => xmlUnesc(g.runs.map(r => r.raw).join(""))), ...slots.map(x => xmlUnesc(x.raw))] });
+    } else if (FLAT.test(name)) {
+      const xml = await zip.file(name).async("string"), nodes = [...xml.matchAll(/>([^<>]*[^<>\s][^<>]*)</g)].map(m => ({ a: m.index + 1, b: m.index + 1 + m[1].length, raw: m[1] }));
+      if (nodes.length) items.push({ name, xml, kind: "flat", nodes, texts: nodes.map(x => xmlUnesc(x.raw)) });
+    } else if (/\.rels$/.test(name)) { // внешние ссылки (mailto:, адреса, пути к файлам) тоже могут содержать данные
       const xml = await zip.file(name).async("string"), tags = [...xml.matchAll(/<Relationship\b[^>]*>/g)].filter(m => /TargetMode="External"/.test(m[0]) && /\bTarget="[^"]*"/.test(m[0]));
       if (tags.length) items.push({ name, xml, kind: "rel", tags, texts: tags.map(m => xmlUnesc(/\bTarget="([^"]*)"/.exec(m[0])[1])) });
     }
   }
   const all = items.flatMap(i => i.texts), res = fn(all);
   if (res.length !== all.length) throw new Error("внутренняя ошибка: число абзацев изменилось");
-  let k = 0, changed = 0;
+  let k = 0, changed = 0, merged = false;
   for (const it of items) {
     const edits = []; // [от, до, новый текст]
-    if (it.kind === "xml") for (const g of it.groups) {
-      const nt = res[k], old = all[k]; k++;
-      if (nt === old) continue; changed++;
-      const f = g[0];
-      edits.push([f.open, f.end, "<" + f.name + ' xml:space="preserve"' + f.attrs.replace(/\s*xml:space="[^"]*"/, "") + ">" + xmlEsc(nt) + "</" + f.name + ">"]);
-      for (const r of g.slice(1)) edits.push([r.ca, r.cb, ""]);
+    if (it.kind === "xml") {
+      for (const g of it.groups) {
+        const nt = res[k], old = all[k]; k++;
+        if (nt === old) continue; changed++; if (g.chg) merged = true;
+        const f = g.runs[0];
+        edits.push([f.open, f.end, "<" + f.name + ' xml:space="preserve"' + f.attrs.replace(/\s*xml:space="[^"]*"/, "") + ">" + xmlEsc(nt) + "</" + f.name + ">"]);
+        for (const r of g.runs.slice(1)) edits.push([r.ca, r.cb, ""]);
+      }
+      for (const x of it.slots) { const nt = res[k], old = all[k]; k++; if (nt !== old) { changed++; edits.push([x.a, x.b, attrEsc(nt)]) } }
+    } else if (it.kind === "flat") {
+      for (const x of it.nodes) { const nt = res[k], old = all[k]; k++; if (nt !== old) { changed++; edits.push([x.a, x.b, xmlEsc(nt)]) } }
     } else it.tags.forEach(m => {
       const nt = res[k], old = all[k]; k++;
       if (nt !== old) { changed++; edits.push([m.index, m.index + m[0].length, m[0].replace(/\bTarget="[^"]*"/, 'Target="' + attrEsc(nt) + '"')]) }
@@ -204,6 +234,7 @@ async function mapDocx(buf, fn, { clean = false } = {}) {
     if (clean && it.kind === "xml") xml = xml.replace(/\b(w:author|w15:author)="[^"]*"/g, '$1="Автор"').replace(/\bw:initials="[^"]*"/g, 'w:initials=""').replace(/<w15:person\b[\s\S]*?<\/w15:person>/g, "");
     if (xml !== it.xml) zip.file(it.name, xml);
   }
+  if (merged) warn.push("в документе есть исправления (рецензирование): изменённые места сведены в обычный текст");
   if (clean) { // свойства файла: автор, редактор, название, организация
     const blank = async (p, tags) => { const f = zip.file(p); if (f) zip.file(p, (await f.async("string")).replace(new RegExp("(<(" + tags + ")(?:\\s[^>]*)?>)[\\s\\S]*?(</\\2>)", "g"), "$1$3")) };
     await blank("docProps/core.xml", "dc:creator|cp:lastModifiedBy|dc:title|dc:subject|dc:description|cp:keywords|cp:category");
@@ -216,7 +247,7 @@ async function mapDocx(buf, fn, { clean = false } = {}) {
 }
 async function anonymizeDocx(buf, dict = []) {
   let r, preview = [];
-  const o = await mapDocx(buf, texts => { r = E.depersonalize(E.joinCells(texts), dict); const out = E.splitCells(r.text, texts.length);
+  const o = await mapDocx(buf, texts => { r = E.depersonalizeMany(texts, dict); const out = r.texts;
     preview = texts.map((t, i) => [t, out[i]]).filter(([a, b]) => a !== b).slice(0, 6); return out }, { clean: true });
   return { data: o.data, map: r.map, counts: r.counts, warn: [...r.warn.filter(w => !/словарь пуст/.test(w)), ...o.warn], changed: o.changed, preview };
 }
