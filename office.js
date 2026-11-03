@@ -160,35 +160,43 @@ function restoreRows(rows, map) {
 
 // ---------- DOCX ----------
 const PARA = /^word\/(?!_rels\/|charts\/|diagrams\/).*\.xml$/;                                  // части с абзацами
-const FLAT = /^(?:customXml\/(?!_rels\/).*\.xml|word\/(?:charts|diagrams)\/(?!_rels\/).*\.xml|docProps\/custom\.xml)$/; // части, где весь текст между тегами
+const FLAT = /^(?:customXml\/(?!_rels\/).*\.xml|word\/(?:charts|diagrams)\/(?!_rels\/).*\.xml|docProps\/(?:custom|app)\.xml)$/; // части, где весь текст между тегами
 const attrEsc = s => xmlEsc(s).replace(/"/g, "&quot;");
 // Группы текста части: живой текст абзаца (с вставками w:ins) — одна группа; удалённый текст (w:delText) — своя группа на каждое w:del; w:instrText — по одному.
 function textGroups(xml) {
-  const re = /<(w|a):p[ >]|<\/(?:w|a):p>|<w:del\b(?![^>]*\/>)[^>]*>|<\/w:del>|<w:ins\b(?![^>]*\/>)[^>]*>|<\/w:ins>|<(w:t|w:delText|a:t|w:instrText)\b(?![^>]*\/>)([^>]*)>([\s\S]*?)<\/\2>/g;
+  const re = /<(w|a):p[ >]|<\/(?:w|a):p>|<w:(?:del|moveFrom|moveTo)\b(?![^>]*\/>)[^>]*>|<\/w:(?:del|moveFrom|moveTo)>|<w:ins\b(?![^>]*\/>)[^>]*>|<\/w:ins>|<(w:t|w:delText|a:t|w:instrText)\b(?![^>]*\/>)([^>]*)>([\s\S]*?)<\/\2>/g;
   const paras = [], dels = []; let pid = 0, did = 0, ins = 0, iid = 0; const groups = new Map();
   for (const m of xml.matchAll(re)) {
     const t = m[0];
     if (m[1]) paras.push(++pid);
     else if (t === "</w:p>" || t === "</a:p>") paras.pop();
-    else if (/^<w:del[\s>]/.test(t)) dels.push(++did);
-    else if (t === "</w:del>") dels.pop();
+    else if (/^<w:(?:del|moveFrom|moveTo)[\s>]/.test(t)) dels.push({ id: ++did, mv: !/^<w:del[\s>]/.test(t) });
+    else if (/^<\/w:(?:del|moveFrom|moveTo)>/.test(t)) dels.pop();
     else if (/^<w:ins[\s>]/.test(t)) ins++;
     else if (t === "</w:ins>") ins--;
     else {
-      const name = m[2], key = name === "w:instrText" ? "i" + ++iid : name === "w:delText" ? "d" + (dels[dels.length - 1] || 0) : "p" + (paras[paras.length - 1] || 0);
+      const name = m[2], dl = dels[dels.length - 1], pr = paras[paras.length - 1] || 0;
+      const key = dl && dl.mv ? "m" + dl.id : name === "w:instrText" ? "i" + pr : name === "w:delText" ? "d" + (dl ? dl.id : 0) : "p" + pr; // код поля может быть разбит на части: все части абзаца вместе
       const run = { open: m.index, ca: m.index + 1 + name.length + m[3].length + 1, name, attrs: m[3], raw: m[4] };
       run.cb = run.ca + m[4].length; run.end = run.cb + name.length + 3;
       if (!groups.has(key)) groups.set(key, { runs: [], chg: false });
-      const g = groups.get(key); g.runs.push(run); if (ins > 0) g.chg = true;
+      const g = groups.get(key); g.runs.push(run); if (ins > 0 || (dl && dl.mv)) g.chg = true;
     }
   }
   return [...groups.values()];
 }
-// Подписи картинок и поля содержимого: descr/title у рисунков, alias/tag у элементов управления.
-function attrSlots(xml) {
-  const out = [];
-  for (const m of xml.matchAll(/<[\w:]*(?:docPr|cNvPr)\b[^>]*>/g)) for (const a of m[0].matchAll(/\b(descr|title)="([^"]*)"/g)) if (a[2].trim()) out.push({ a: m.index + a.index + a[0].indexOf('"') + 1, b: m.index + a.index + a[0].length - 1, raw: a[2] });
-  for (const m of xml.matchAll(/<w:(?:alias|tag)\b[^>]*>/g)) for (const a of m[0].matchAll(/\bw:val="([^"]*)"/g)) if (a[1].trim()) out.push({ a: m.index + a.index + a[0].indexOf('"') + 1, b: m.index + a.index + a[0].length - 1, raw: a[1] });
+// Атрибуты с текстом: подписи и подсказки, имена файлов и закладок, поля содержимого, переменные документа, коды простых полей.
+const SLOT_ANY = /\b((?:w:|o:)?(?:descr|title|alt|tooltip|instr))="([^"]*)"/g, SLOT_TAG = /^<(?:[\w]+:)?(?:cNvPr|docPr|bookmarkStart|docVar|docPart|alias|tag|attr|smartTagPr|placeholder)\b/, SLOT_NAME = /\b((?:w:)?(?:name|val))="([^"]*)"/g;
+function attrSlots(xml, all = false) {
+  const out = [], seen = new Set();
+  for (const m of xml.matchAll(/<[\w:]+\b[^>]*>/g)) {
+    const tag = m[0], rx = all ? [/\b([\w:]+)="([^"]*)"/g] : SLOT_TAG.test(tag) ? [SLOT_ANY, SLOT_NAME] : [SLOT_ANY];
+    for (const r of rx) for (const a of tag.matchAll(r)) {
+      if (!a[2].trim() || /^xmlns/.test(a[1]) || (all && (/^\{.*\}$/.test(a[2]) || !/[A-Za-zА-Яа-яЁё\d]/.test(a[2])))) continue;
+      const pos = m.index + a.index + a[0].indexOf('"') + 1;
+      if (!seen.has(pos)) { seen.add(pos); out.push({ a: pos, b: pos + a[2].length, raw: a[2] }) }
+    }
+  }
   return out;
 }
 // Прогоняет тексты документа через fn(массив строк) → массив строк (общая нумерация меток по всем частям).
@@ -202,7 +210,9 @@ async function mapDocx(buf, fn, { clean = false } = {}) {
       const xml = await zip.file(name).async("string"), groups = textGroups(xml), slots = attrSlots(xml);
       items.push({ name, xml, kind: "xml", groups, slots, texts: [...groups.map(g => xmlUnesc(g.runs.map(r => r.raw).join(""))), ...slots.map(x => xmlUnesc(x.raw))] });
     } else if (FLAT.test(name)) {
-      const xml = await zip.file(name).async("string"), nodes = [...xml.matchAll(/>([^<>]*[^<>\s][^<>]*)</g)].map(m => ({ a: m.index + 1, b: m.index + 1 + m[1].length, raw: m[1] }));
+      const xml = await zip.file(name).async("string"), app = name === "docProps/app.xml", chart = /\/charts\//.test(name);
+      const nodes = [...xml.matchAll(app ? /<vt:lpstr>([^<>]*[^<>\s][^<>]*)</g : /(?<=>)([^<>]*[^<>\s][^<>]*)(?=<)/g)].map(m => ({ a: m.index + m[0].indexOf(m[1]), b: m.index + m[0].indexOf(m[1]) + m[1].length, raw: m[1] })).filter(x => !(chart && /^[\d\s.,+-]+$/.test(x.raw)));
+      if (!app) { for (const x of attrSlots(xml, true)) nodes.push(x); for (const m of xml.matchAll(/<!--([\s\S]*?)-->/g)) if (m[1].trim()) nodes.push({ a: m.index + 4, b: m.index + 4 + m[1].length, raw: m[1] }) }
       if (nodes.length) items.push({ name, xml, kind: "flat", nodes, texts: nodes.map(x => xmlUnesc(x.raw)) });
     } else if (/\.rels$/.test(name)) { // внешние ссылки (mailto:, адреса, пути к файлам) тоже могут содержать данные
       const xml = await zip.file(name).async("string"), tags = [...xml.matchAll(/<Relationship\b[^>]*>/g)].filter(m => /TargetMode="External"/.test(m[0]) && /\bTarget="[^"]*"/.test(m[0]));

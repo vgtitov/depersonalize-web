@@ -30,18 +30,20 @@ function capsPeople(v){
     if(p){out.push([ws[i].a,ws[i+p.length-1].b]);i+=p.length}else i++}
   return out}
 function cls(w){const l=w.toLowerCase();return PATX.test(l)?"P":FIRSTSET.has(stem(w))?"F":SURX.test(l)?"S":"X"}
-const QUAL = "(?:[ \\t]+[\\wА-Яа-яЁё-]+){0,6}";
+const QUAL = "(?:[ \\t]+[\\wА-Яа-яЁё-]+){0,9}";
 const SEPC = QUAL + "[\"']?[ \\t]*[:=][ \\t]*(?:\\r?\\n|\u2028)?[ \\t]*"; // «пароль от почты: значение», значение может быть на следующей строке
 const SEPD = QUAL + "[ \\t]+[-–—][ \\t]+";
 const SECVAL = "(?:\"((?:[^\"\\\\\\n\u2028]|\\\\.)+)\"|'((?:[^'\\\\\\n\u2028]|\\\\.)+)'|«([^»\\n\u2028]+)»|((?:[^\\s\"',;&]|&(?!\\w+=)|[,;](?=[^\\s,;]))+?)(?=\\.*(?:[\\s&\"']|[,;](?:\\s|$)|$)))";
-const KWS = "парол[ьяю]|password|passwd|passphrase|pass|pwd|api[ _-]?key|apikey|access[ _-]?key|pin|пин|pin-?код|пин-?код|cvv|cvc|otp", KWW = "токен|token|секрет|secret";
+const KWS = "парол[ьяю]|password|passwd|passphrase|pass|pwd|api[ _-]?key|apikey|access[ _-]?key|pin|пин|pin-?код|пин-?код|cvv|cvc|otp|код[ ]доступа|код[ ]подтверждения|одноразов\\w+[ ]код|access[ ]code", KWW = "токен|token|секрет|secret";
 const notLabel = v => !/^\[[А-ЯЁA-Z]+_\d+\]$/.test(v), strongVal = v => notLabel(v) && (v.length >= 16 || /\d/.test(v) || /[a-zа-яё][A-ZА-ЯЁ]|[A-ZА-ЯЁ].*[a-zа-яё]/.test(v) && /[A-Za-zА-Яа-яЁё]/.test(v) && /[^A-Za-zА-Яа-яЁё]/.test(v));
 const kwRe = (kw, sep) => new RegExp(`(?<![\\wА-Яа-яЁё])(?:${kw})(?![\\wА-Яа-яЁё])${sep}${SECVAL}`, "gi");
 const RULES = [ // [метка, regex, группа значения, проверка, разбор цепочки]
  ["СЕКРЕТ", kwRe(KWS, SEPC), [1,2,3,4], notLabel],
  ["СЕКРЕТ", kwRe(KWW, SEPC), [1,2,3,4], strongVal],
  ["СЕКРЕТ", kwRe(KWS + "|" + KWW, SEPD), [1,2,3,4], strongVal],
- ["СЕКРЕТ", /(?<![\wА-Яа-яЁё])(?:парол[ьяю]|password|pass|pwd|токен|token|пин|pin)(?:[ \t]+(?:от|для|к|на|в)[ \t]+[\wА-Яа-яЁё-]+(?:[ \t]+[\wА-Яа-яЁё-]+){0,3})?[ \t]+([^\s"',;]{6,})/gi, 1, v=>/\d/.test(v)&&notLabel(v)],
+ ["СЕКРЕТ", /(?<![\wА-Яа-яЁё])(?:парол[ьяю]|password|pass|pwd|токен|token|пин|pin)(?:[ \t]+(?:от|для|к|на|в)[ \t]+[\wА-Яа-яЁё-]+(?:[ \t]+[\wА-Яа-яЁё-]+){0,7})?(?:[ \t]+(?:is|есть))?[ \t]+([^\s"',;]{4,})/gi, 1, v=>/\d/.test(v)&&notLabel(v)],
+ ["СЕКРЕТ", /(?<![\wА-Яа-яЁё])(?:pin|пин|pin-?код|пин-?код|cvv2?|cvc2?|otp)[ \t]*[:=]?[ \t]*(\d{3,8})(?![\d\wА-Яа-яЁё])/gi, 1],
+ ["СЕКРЕТ", kwRe(KWS + "|token|токен", QUAL + "[ \\t]+(?=[\"'«])"), [1,2,3,4], notLabel],
  ["СЕКРЕТ", /(?<=\b[a-z][a-z0-9+.-]*:\/\/[^\s:@\/?#]+:)[^\s@\/?#]+(?=@)/gi, 0],
  ["СЕКРЕТ", /(?<![\wА-Яа-яЁё])bearer[ \t]+([A-Za-z0-9._~+\/=-]{12,})/gi, 1],
  ["СЕКРЕТ", /(?<![\w-])(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})(?![\w-])/g, 0],
@@ -147,7 +149,7 @@ function depersonalizeMany(texts, dictLines){
   const parsed=texts.map(t=>analyze(t,dictRes));
   // одинокая фамилия, которая в этих текстах названа с именем: «сказала Сидорову»
   const lasts=new Set();
-  for(const {keep} of parsed)for(const k of keep)if(k[2]==="ЧЕЛОВЕК"){const l=parsePerson(k[3]).last;if(l&&l.length>=4)lasts.add(l)}
+  for(const {keep} of parsed)for(const k of keep)if(k[2]==="ЧЕЛОВЕК"){const l=parsePerson(k[3]).last;if(l&&l.length>=4&&/(?:ов|ев|ёв|ин|ын|ский|цкий|ск|цк|ова|ева|ина|ына|енко|ко|ук|юк|ич|ий|ой|ая|ов[аы]?)$/i.test(l))lasts.add(l)}
   const outs=texts.map((text,ti)=>{
     const {keep,sec}=parsed[ti];
     if(lasts.size){const re=/(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]{3,}(?![А-ЯЁа-яё])/g,extra=[];let m,j=0;

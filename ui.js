@@ -17,7 +17,7 @@
   const saveKey = tab => { if (!M[tab].size) return false; download("ключ-обезличивания.json", mapToJson(M[tab]), TYPES.json); return true };
   async function loadKey(file, msgId, tab) {
     if (!file) return;
-    try { M[tab] = mapFromJson(await file.text()); say(msgId, "Ключ загружен, значений: " + M[tab].size, "ok") }
+    try { M[tab] = mapFromJson(await file.text()); say(msgId, "Ключ загружен, значений: " + [...M[tab].keys()].filter(k => k[0] !== "#").length, "ok") }
     catch (e) { say(msgId, "Это не файл-ключ, который сохранила эта страница. Выберите файл «ключ-обезличивания.json».", "bad") }
   }
   const needKey = (id, tab) => { if (M[tab].size) return true; say(id, "Нет ключа. Сначала скройте данные на этой странице или загрузите файл-ключ.", "bad"); return false };

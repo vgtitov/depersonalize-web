@@ -188,18 +188,20 @@ function capsPeople(v){
     if(p){out.push([ws[i].a,ws[i+p.length-1].b]);i+=p.length}else i++}
   return out}
 function cls(w){const l=w.toLowerCase();return PATX.test(l)?"P":FIRSTSET.has(stem(w))?"F":SURX.test(l)?"S":"X"}
-const QUAL = "(?:[ \\t]+[\\wА-Яа-яЁё-]+){0,6}";
+const QUAL = "(?:[ \\t]+[\\wА-Яа-яЁё-]+){0,9}";
 const SEPC = QUAL + "[\"']?[ \\t]*[:=][ \\t]*(?:\\r?\\n|\u2028)?[ \\t]*"; // «пароль от почты: значение», значение может быть на следующей строке
 const SEPD = QUAL + "[ \\t]+[-–—][ \\t]+";
 const SECVAL = "(?:\"((?:[^\"\\\\\\n\u2028]|\\\\.)+)\"|'((?:[^'\\\\\\n\u2028]|\\\\.)+)'|«([^»\\n\u2028]+)»|((?:[^\\s\"',;&]|&(?!\\w+=)|[,;](?=[^\\s,;]))+?)(?=\\.*(?:[\\s&\"']|[,;](?:\\s|$)|$)))";
-const KWS = "парол[ьяю]|password|passwd|passphrase|pass|pwd|api[ _-]?key|apikey|access[ _-]?key|pin|пин|pin-?код|пин-?код|cvv|cvc|otp", KWW = "токен|token|секрет|secret";
+const KWS = "парол[ьяю]|password|passwd|passphrase|pass|pwd|api[ _-]?key|apikey|access[ _-]?key|pin|пин|pin-?код|пин-?код|cvv|cvc|otp|код[ ]доступа|код[ ]подтверждения|одноразов\\w+[ ]код|access[ ]code", KWW = "токен|token|секрет|secret";
 const notLabel = v => !/^\[[А-ЯЁA-Z]+_\d+\]$/.test(v), strongVal = v => notLabel(v) && (v.length >= 16 || /\d/.test(v) || /[a-zа-яё][A-ZА-ЯЁ]|[A-ZА-ЯЁ].*[a-zа-яё]/.test(v) && /[A-Za-zА-Яа-яЁё]/.test(v) && /[^A-Za-zА-Яа-яЁё]/.test(v));
 const kwRe = (kw, sep) => new RegExp(`(?<![\\wА-Яа-яЁё])(?:${kw})(?![\\wА-Яа-яЁё])${sep}${SECVAL}`, "gi");
 const RULES = [ // [метка, regex, группа значения, проверка, разбор цепочки]
  ["СЕКРЕТ", kwRe(KWS, SEPC), [1,2,3,4], notLabel],
  ["СЕКРЕТ", kwRe(KWW, SEPC), [1,2,3,4], strongVal],
  ["СЕКРЕТ", kwRe(KWS + "|" + KWW, SEPD), [1,2,3,4], strongVal],
- ["СЕКРЕТ", /(?<![\wА-Яа-яЁё])(?:парол[ьяю]|password|pass|pwd|токен|token|пин|pin)(?:[ \t]+(?:от|для|к|на|в)[ \t]+[\wА-Яа-яЁё-]+(?:[ \t]+[\wА-Яа-яЁё-]+){0,3})?[ \t]+([^\s"',;]{6,})/gi, 1, v=>/\d/.test(v)&&notLabel(v)],
+ ["СЕКРЕТ", /(?<![\wА-Яа-яЁё])(?:парол[ьяю]|password|pass|pwd|токен|token|пин|pin)(?:[ \t]+(?:от|для|к|на|в)[ \t]+[\wА-Яа-яЁё-]+(?:[ \t]+[\wА-Яа-яЁё-]+){0,7})?(?:[ \t]+(?:is|есть))?[ \t]+([^\s"',;]{4,})/gi, 1, v=>/\d/.test(v)&&notLabel(v)],
+ ["СЕКРЕТ", /(?<![\wА-Яа-яЁё])(?:pin|пин|pin-?код|пин-?код|cvv2?|cvc2?|otp)[ \t]*[:=]?[ \t]*(\d{3,8})(?![\d\wА-Яа-яЁё])/gi, 1],
+ ["СЕКРЕТ", kwRe(KWS + "|token|токен", QUAL + "[ \\t]+(?=[\"'«])"), [1,2,3,4], notLabel],
  ["СЕКРЕТ", /(?<=\b[a-z][a-z0-9+.-]*:\/\/[^\s:@\/?#]+:)[^\s@\/?#]+(?=@)/gi, 0],
  ["СЕКРЕТ", /(?<![\wА-Яа-яЁё])bearer[ \t]+([A-Za-z0-9._~+\/=-]{12,})/gi, 1],
  ["СЕКРЕТ", /(?<![\w-])(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})(?![\w-])/g, 0],
@@ -305,7 +307,7 @@ function depersonalizeMany(texts, dictLines){
   const parsed=texts.map(t=>analyze(t,dictRes));
   // одинокая фамилия, которая в этих текстах названа с именем: «сказала Сидорову»
   const lasts=new Set();
-  for(const {keep} of parsed)for(const k of keep)if(k[2]==="ЧЕЛОВЕК"){const l=parsePerson(k[3]).last;if(l&&l.length>=4)lasts.add(l)}
+  for(const {keep} of parsed)for(const k of keep)if(k[2]==="ЧЕЛОВЕК"){const l=parsePerson(k[3]).last;if(l&&l.length>=4&&/(?:ов|ев|ёв|ин|ын|ский|цкий|ск|цк|ова|ева|ина|ына|енко|ко|ук|юк|ич|ий|ой|ая|ов[аы]?)$/i.test(l))lasts.add(l)}
   const outs=texts.map((text,ti)=>{
     const {keep,sec}=parsed[ti];
     if(lasts.size){const re=/(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]{3,}(?![А-ЯЁа-яё])/g,extra=[];let m,j=0;
@@ -498,35 +500,43 @@ function restoreRows(rows, map) {
 
 // ---------- DOCX ----------
 const PARA = /^word\/(?!_rels\/|charts\/|diagrams\/).*\.xml$/;                                  // части с абзацами
-const FLAT = /^(?:customXml\/(?!_rels\/).*\.xml|word\/(?:charts|diagrams)\/(?!_rels\/).*\.xml|docProps\/custom\.xml)$/; // части, где весь текст между тегами
+const FLAT = /^(?:customXml\/(?!_rels\/).*\.xml|word\/(?:charts|diagrams)\/(?!_rels\/).*\.xml|docProps\/(?:custom|app)\.xml)$/; // части, где весь текст между тегами
 const attrEsc = s => xmlEsc(s).replace(/"/g, "&quot;");
 // Группы текста части: живой текст абзаца (с вставками w:ins) — одна группа; удалённый текст (w:delText) — своя группа на каждое w:del; w:instrText — по одному.
 function textGroups(xml) {
-  const re = /<(w|a):p[ >]|<\/(?:w|a):p>|<w:del\b(?![^>]*\/>)[^>]*>|<\/w:del>|<w:ins\b(?![^>]*\/>)[^>]*>|<\/w:ins>|<(w:t|w:delText|a:t|w:instrText)\b(?![^>]*\/>)([^>]*)>([\s\S]*?)<\/\2>/g;
+  const re = /<(w|a):p[ >]|<\/(?:w|a):p>|<w:(?:del|moveFrom|moveTo)\b(?![^>]*\/>)[^>]*>|<\/w:(?:del|moveFrom|moveTo)>|<w:ins\b(?![^>]*\/>)[^>]*>|<\/w:ins>|<(w:t|w:delText|a:t|w:instrText)\b(?![^>]*\/>)([^>]*)>([\s\S]*?)<\/\2>/g;
   const paras = [], dels = []; let pid = 0, did = 0, ins = 0, iid = 0; const groups = new Map();
   for (const m of xml.matchAll(re)) {
     const t = m[0];
     if (m[1]) paras.push(++pid);
     else if (t === "</w:p>" || t === "</a:p>") paras.pop();
-    else if (/^<w:del[\s>]/.test(t)) dels.push(++did);
-    else if (t === "</w:del>") dels.pop();
+    else if (/^<w:(?:del|moveFrom|moveTo)[\s>]/.test(t)) dels.push({ id: ++did, mv: !/^<w:del[\s>]/.test(t) });
+    else if (/^<\/w:(?:del|moveFrom|moveTo)>/.test(t)) dels.pop();
     else if (/^<w:ins[\s>]/.test(t)) ins++;
     else if (t === "</w:ins>") ins--;
     else {
-      const name = m[2], key = name === "w:instrText" ? "i" + ++iid : name === "w:delText" ? "d" + (dels[dels.length - 1] || 0) : "p" + (paras[paras.length - 1] || 0);
+      const name = m[2], dl = dels[dels.length - 1], pr = paras[paras.length - 1] || 0;
+      const key = dl && dl.mv ? "m" + dl.id : name === "w:instrText" ? "i" + pr : name === "w:delText" ? "d" + (dl ? dl.id : 0) : "p" + pr; // код поля может быть разбит на части: все части абзаца вместе
       const run = { open: m.index, ca: m.index + 1 + name.length + m[3].length + 1, name, attrs: m[3], raw: m[4] };
       run.cb = run.ca + m[4].length; run.end = run.cb + name.length + 3;
       if (!groups.has(key)) groups.set(key, { runs: [], chg: false });
-      const g = groups.get(key); g.runs.push(run); if (ins > 0) g.chg = true;
+      const g = groups.get(key); g.runs.push(run); if (ins > 0 || (dl && dl.mv)) g.chg = true;
     }
   }
   return [...groups.values()];
 }
-// Подписи картинок и поля содержимого: descr/title у рисунков, alias/tag у элементов управления.
-function attrSlots(xml) {
-  const out = [];
-  for (const m of xml.matchAll(/<[\w:]*(?:docPr|cNvPr)\b[^>]*>/g)) for (const a of m[0].matchAll(/\b(descr|title)="([^"]*)"/g)) if (a[2].trim()) out.push({ a: m.index + a.index + a[0].indexOf('"') + 1, b: m.index + a.index + a[0].length - 1, raw: a[2] });
-  for (const m of xml.matchAll(/<w:(?:alias|tag)\b[^>]*>/g)) for (const a of m[0].matchAll(/\bw:val="([^"]*)"/g)) if (a[1].trim()) out.push({ a: m.index + a.index + a[0].indexOf('"') + 1, b: m.index + a.index + a[0].length - 1, raw: a[1] });
+// Атрибуты с текстом: подписи и подсказки, имена файлов и закладок, поля содержимого, переменные документа, коды простых полей.
+const SLOT_ANY = /\b((?:w:|o:)?(?:descr|title|alt|tooltip|instr))="([^"]*)"/g, SLOT_TAG = /^<(?:[\w]+:)?(?:cNvPr|docPr|bookmarkStart|docVar|docPart|alias|tag|attr|smartTagPr|placeholder)\b/, SLOT_NAME = /\b((?:w:)?(?:name|val))="([^"]*)"/g;
+function attrSlots(xml, all = false) {
+  const out = [], seen = new Set();
+  for (const m of xml.matchAll(/<[\w:]+\b[^>]*>/g)) {
+    const tag = m[0], rx = all ? [/\b([\w:]+)="([^"]*)"/g] : SLOT_TAG.test(tag) ? [SLOT_ANY, SLOT_NAME] : [SLOT_ANY];
+    for (const r of rx) for (const a of tag.matchAll(r)) {
+      if (!a[2].trim() || /^xmlns/.test(a[1]) || (all && (/^\{.*\}$/.test(a[2]) || !/[A-Za-zА-Яа-яЁё\d]/.test(a[2])))) continue;
+      const pos = m.index + a.index + a[0].indexOf('"') + 1;
+      if (!seen.has(pos)) { seen.add(pos); out.push({ a: pos, b: pos + a[2].length, raw: a[2] }) }
+    }
+  }
   return out;
 }
 // Прогоняет тексты документа через fn(массив строк) → массив строк (общая нумерация меток по всем частям).
@@ -540,7 +550,9 @@ async function mapDocx(buf, fn, { clean = false } = {}) {
       const xml = await zip.file(name).async("string"), groups = textGroups(xml), slots = attrSlots(xml);
       items.push({ name, xml, kind: "xml", groups, slots, texts: [...groups.map(g => xmlUnesc(g.runs.map(r => r.raw).join(""))), ...slots.map(x => xmlUnesc(x.raw))] });
     } else if (FLAT.test(name)) {
-      const xml = await zip.file(name).async("string"), nodes = [...xml.matchAll(/>([^<>]*[^<>\s][^<>]*)</g)].map(m => ({ a: m.index + 1, b: m.index + 1 + m[1].length, raw: m[1] }));
+      const xml = await zip.file(name).async("string"), app = name === "docProps/app.xml", chart = /\/charts\//.test(name);
+      const nodes = [...xml.matchAll(app ? /<vt:lpstr>([^<>]*[^<>\s][^<>]*)</g : /(?<=>)([^<>]*[^<>\s][^<>]*)(?=<)/g)].map(m => ({ a: m.index + m[0].indexOf(m[1]), b: m.index + m[0].indexOf(m[1]) + m[1].length, raw: m[1] })).filter(x => !(chart && /^[\d\s.,+-]+$/.test(x.raw)));
+      if (!app) { for (const x of attrSlots(xml, true)) nodes.push(x); for (const m of xml.matchAll(/<!--([\s\S]*?)-->/g)) if (m[1].trim()) nodes.push({ a: m.index + 4, b: m.index + 4 + m[1].length, raw: m[1] }) }
       if (nodes.length) items.push({ name, xml, kind: "flat", nodes, texts: nodes.map(x => xmlUnesc(x.raw)) });
     } else if (/\.rels$/.test(name)) { // внешние ссылки (mailto:, адреса, пути к файлам) тоже могут содержать данные
       const xml = await zip.file(name).async("string"), tags = [...xml.matchAll(/<Relationship\b[^>]*>/g)].filter(m => /TargetMode="External"/.test(m[0]) && /\bTarget="[^"]*"/.test(m[0]));
@@ -628,7 +640,7 @@ if (typeof module !== "undefined") module.exports = api;
   const saveKey = tab => { if (!M[tab].size) return false; download("ключ-обезличивания.json", mapToJson(M[tab]), TYPES.json); return true };
   async function loadKey(file, msgId, tab) {
     if (!file) return;
-    try { M[tab] = mapFromJson(await file.text()); say(msgId, "Ключ загружен, значений: " + M[tab].size, "ok") }
+    try { M[tab] = mapFromJson(await file.text()); say(msgId, "Ключ загружен, значений: " + [...M[tab].keys()].filter(k => k[0] !== "#").length, "ok") }
     catch (e) { say(msgId, "Это не файл-ключ, который сохранила эта страница. Выберите файл «ключ-обезличивания.json».", "bad") }
   }
   const needKey = (id, tab) => { if (M[tab].size) return true; say(id, "Нет ключа. Сначала скройте данные на этой странице или загрузите файл-ключ.", "bad"); return false };
