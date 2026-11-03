@@ -1,9 +1,17 @@
-// index.html содержит ровно тот engine.js, что проверяют тесты.
+// index.html содержит ровно те файлы, что проверяют тесты, и остаётся автономным.
 const assert = require("assert"), fs = require("fs"), path = require("path");
 const root = path.join(__dirname, "..");
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
-const eng = fs.readFileSync(path.join(root, "engine.js"), "utf8");
-assert.ok(html.includes("<!--ENGINE-->\n<script>\n" + eng + "</script>\n<!--/ENGINE-->"), "index.html не собран: sh build.sh");
+for (const f of ["vendor/jszip.min.js", "engine.js", "office.js", "ui.js"]) {
+  const src = fs.readFileSync(path.join(root, f), "utf8").replace(/<\/script/g, "<\\/script");
+  assert.ok(html.includes("<script>\n" + src + "\n</script>"), f + " не вставлен в index.html: sh build.sh");
+}
 assert.ok(/Content-Security-Policy" content="default-src 'none'/.test(html), "нет CSP");
-assert.ok(!/<script[^>]+src=|<link[^>]+href=|https?:\/\//.test(html.replace(/<p class="note">[\s\S]*?<\/p>/, "")), "во внешних ссылках быть нечему");
-console.log("сборка и CSP: ok");
+const scripts = html.match(/<script[^>]*>/g) || [];
+assert.ok(scripts.every(s => s === "<script>"), "внешние скрипты запрещены");
+assert.ok(!/<link\b|<iframe|<img[^>]+src="http/.test(html), "внешние ресурсы запрещены");
+for (const f of ["engine.js", "office.js", "ui.js"]) {
+  const src = fs.readFileSync(path.join(root, f), "utf8");
+  assert.ok(!/\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|localStorage|sessionStorage|indexedDB|document\.cookie/.test(src), f + ": сеть или хранение запрещены");
+}
+console.log("сборка, CSP, нет сети и хранения: ok");
