@@ -49,25 +49,33 @@ const CAP = "[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?";
 const PATR = "(?:(?:ович|евич|ьич)(?:а|у|ем|ом|е|ы)?|(?:овн|евн|ичн|инична?)(?:а|у|ы|е|ой|ою)|ична|инична)";
 const SURN = "(?:ов|ев|ёв|ин|ын|(?:ск|цк)(?:ий|ая|ого|ому|им|ом|ой|ую|ое)|ова|ева|ина|ына|енко|ук|юк|чик|ич)(?:а|у|ым|ом|ем|ой|е|ых|ого|ому)?";
 const ORGF = "(?:ООО|ЗАО|ОАО|ОДО|ЧУП|УП|ПАО|АО|ИП|ЧП|НКО|УО)";
+const ORGW = "(?:[А-ЯЁ][а-яё]{2,}|[A-Z][A-Za-z]{2,}|[А-ЯЁ]{3,}|[A-Z]{3,})(?:-(?:[А-ЯЁ][а-яё]+|[A-Za-z]+|[А-ЯЁ]+))*";
+// Название без кавычек: форма собственности и слова после неё, пока не встретилось имя человека.
+function orgName(v){const ws=[...v.matchAll(/\S+/g)];let end=ws[0].index+ws[0].length;
+  for(let i=1;i<ws.length;i++){const w=ws[i][0],l=w.toLowerCase();
+    if(i>1&&(FIRSTSET.has(stem(w))||SURX.test(l)||PATX.test(l)))break;
+    end=ws[i].index+w.length}
+  return [[0,end]]}
 const PATX = /^[а-яё]+(?:(?:ович|евич|ьич)(?:а|у|ем|ом|е|ы)?|(?:овн|евн|ичн|иничн)(?:а|у|ы|е|ой|ою))$/;
 const SURX = /(?:ов|ев|ёв|ин|ын|(?:ск|цк)(?:ий|ая|ого|ому|им|ом|ой|ую|ое)|ова|ева|ина|ына|енко|ук|юк)(?:а|у|ым|ом|ем|ой|е|ых|ого|ому)?$/;
 // Прописная цепочка «КЛИЕНТ ИВАНОВ ИВАН ИВАНОВИЧ»: находим внутри неё границы ФИО по классам слов (Ф фамилия, И имя, О отчество).
 function capsPeople(v){
   const ws=[...v.matchAll(/[А-ЯЁ]{2,}/g)].map(m=>({a:m.index,b:m.index+m[0].length,c:cls(m[0])}));
-  const pats=["SFP","FPS","FP","SF","FS"], out=[];
+  const pats=["SFP","PFP","FPS","FP","SF","FS","PF"], out=[];
   for(let i=0;i<ws.length;){
     const p=pats.find(p=>i+p.length<=ws.length&&[...p].every((c,k)=>ws[i+k].c===c));
     if(p){out.push([ws[i].a,ws[i+p.length-1].b]);i+=p.length}else i++}
   return out}
 function cls(w){const l=w.toLowerCase();return PATX.test(l)?"P":FIRSTSET.has(stem(w))?"F":SURX.test(l)?"S":"X"}
 const SEP = "[\"']?(?:[ \\t]*[:=]|[ \\t]+[-–—])[ \\t]*";
-const SECVAL = "(?:\"([^\"\\n]{1,200})\"|'([^'\\n]{1,200})'|«([^»\\n]{1,200})»|([^\\s\"',;]+))";
+const SECVAL = "(?:\"((?:[^\"\\\\\\n]|\\\\.)+)\"|'((?:[^'\\\\\\n]|\\\\.)+)'|«([^»\\n]+)»|((?:[^\\s\"',;&]|&(?!\\w+=))+))";
 const RULES = [ // [метка, regex, группа значения, проверка, разбор цепочки]
  ["СЕКРЕТ", new RegExp(`(?<![\\wА-Яа-яЁё])(?:парол[ьяю]|password|passwd|passphrase|pass|pwd|токен|token|секрет|secret|api[ _-]?key|apikey|access[ _-]?key)(?![\\wА-Яа-яЁё])${SEP}${SECVAL}`,"gi"), [1,2,3,4], v=>!/^\[[А-ЯЁA-Z]+_\d+\]$/.test(v)],
+ ["СЕКРЕТ", /(?<=\b[a-z][a-z0-9+.-]*:\/\/[^\s:@\/?#]+:)[^\s@\/?#]+(?=@)/gi, 0],
  ["СЕКРЕТ", /(?<![\wА-Яа-яЁё])bearer[ \t]+([A-Za-z0-9._~+\/=-]{12,})/gi, 1],
  ["СЕКРЕТ", /(?<![\w-])(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})(?![\w-])/g, 0],
  ["ОРГ", new RegExp(`(?<![А-ЯЁа-яёA-Za-z])${ORGF}[ \\t]+[«"„“'][^«»"„“”'\\n]{1,80}[»"“”']`,"g"), 0],
- ["ОРГ", /(?<![А-ЯЁа-яёA-Za-z])(?:ООО|ЗАО|ОАО|ОДО|ЧУП|УП|ПАО|АО)[ \t]+(?:[А-ЯЁ][а-яё]{2,}|[A-Z][A-Za-z]{2,}|[А-ЯЁ]{3,}|[A-Z]{3,})(?:-(?:[А-ЯЁ][а-яё]+|[A-Za-z]+|[А-ЯЁ]+))*(?![А-ЯЁа-яёA-Za-z])/g, 0],
+ ["ОРГ", new RegExp(`(?<![А-ЯЁа-яёA-Za-z])(?:ООО|ЗАО|ОАО|ОДО|ЧУП|УП|ПАО|АО|ЧП|УО|НКО)[ \\t]+${ORGW}(?:[ \\t]+${ORGW}){0,3}(?![А-ЯЁа-яёA-Za-z])`,"g"), 0, null, orgName],
  ["EMAIL", /(?<![\wА-Яа-яЁё.+-])[\wА-Яа-яЁё.+-]{1,64}@[\wА-Яа-яЁё-]{1,63}(?:\.[\wА-Яа-яЁё-]{1,63}){1,8}/g, 0],
  ["URL", /\b(?:https?:\/\/|www\.)[^\s<>"')\]]*[^\s<>"')\]\.,;:!?]/gi, 0],
  ["IP", /(?<![\w.])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?![\w]|\.\d)/g, 0],
@@ -95,43 +103,59 @@ function esc(s){return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}
 const ENDS=["ого","ому","ыми","ым","им","ом","ем","ой","ою","ую","ых","а","у","е","ы","я","ю"];
 function surn(w){w=w.toLowerCase().replace(/ё/g,"е").replace(/(ск|цк)(?:ий|ая|ого|ому|им|ой|ую|ом|ое|их)$/,"$1");
   for(const e of ENDS)if(w.length>e.length+3&&w.endsWith(e))return w.slice(0,-e.length);return w}
-function parsePerson(v){const p={first:null,patr:null,last:null};
-  for(const w of v.split(/[\s.]+/).filter(x=>x.length>1)){const l=w.toLowerCase();
-    if(PATX.test(l))p.patr=l.replace(/(?:ем|ом|ой|ою|а|у|е|ы)$/,"");else if(!p.first&&FIRSTSET.has(stem(w)))p.first=stem(w);else p.last=surn(w)}
+function parsePerson(v){const p={first:null,patr:null,last:null,ini:""};
+  for(const w of v.split(/[\s.]+/).filter(Boolean)){const l=w.toLowerCase();
+    if(w.length===1){p.ini+=l;continue}
+    const parts=l.split("-");
+    if(PATX.test(l))p.patr=l.replace(/(?:ем|ом|ой|ою|а|у|е|ы)$/,"");
+    else if(!p.first&&parts.every(x=>FIRSTSET.has(stem(x))))p.first=stem(parts[0]);
+    else p.last=parts.map(surn).join("-")}
   return p}
+const init=(p,k)=>k===0?(p.first?p.first[0]:p.ini[0]):(p.patr?p.patr[0]:p.ini[1]);
 function samePerson(a,b){
   if(a.patr&&b.patr&&a.patr!==b.patr)return false;
-  if(a.last&&b.last)return a.last===b.last&&(!a.first||!b.first||a.first===b.first);
+  if(a.last&&b.last)return a.last===b.last&&(!a.first||!b.first||a.first===b.first)&&[0,1].every(k=>!init(a,k)||!init(b,k)||init(a,k)===init(b,k));
   if(a.last||b.last){const [x,y]=a.last?[b,a]:[a,b];return !!x.first&&x.first===y.first&&!!x.patr&&x.patr===y.patr}
   return !!a.first&&a.first===b.first&&a.patr===b.patr}
 const words=v=>v.split(/\s+/).length;
+// Индекс людей: ищем по фамилии или по имени с отчеством, а не перебором всех.
+const fp=p=>(p.first||"")+"|"+(p.patr||"");
+const qkeys=p=>p.last?["L|"+p.last,...(p.first&&p.patr?["NL|"+fp(p)]:[])]:p.first?["FP|"+fp(p)]:[];
+
 const SUF="(?:ами|ями|ого|ому|ой|ей|ою|ею|ью|ом|ем|ём|ым|им|ов|ев|ам|ям|ах|ях|а|я|у|ю|ы|и|е|й|ь)?"; // падежные окончания слова из словаря
 function depersonalize(text, dictLines){
-  const map=new Map(), byKey=new Map(), counts={}, num={}, spans=[], people=[], sec=[];
+  const map=new Map(), byKey=new Map(), counts={}, num={}, spans=[], sec=[], idx=new Map();
   const used=new Set(text.match(/\[[А-ЯЁA-Z]+_\d+\]/g)||[]); // номера, уже занятые метками в исходном тексте, пропускаем
   const fresh=(label,val)=>{let t;do{num[label]=(num[label]||0)+1;t=`[${label}_${num[label]}]`}while(used.has(t));
     counts[label]=(counts[label]||0)+1;if(label!=="СЕКРЕТ")map.set(t,val);return t}; // секреты в карту не пишем
+  const add=e=>{const p=e.p,ks=[];if(p.last)ks.push("L|"+p.last);if(p.first){ks.push("FP|"+fp(p));if(!p.last)ks.push("NL|"+fp(p))}
+    for(const k of ks){if(!idx.has(k))idx.set(k,new Set());idx.get(k).add(e)}};
   const token=(label,val)=>{
-    if(label==="ЧЕЛОВЕК"){const p=parsePerson(val),e=people.find(e=>samePerson(e.p,p));
+    if(label==="ЧЕЛОВЕК"){const p=parsePerson(val);let e=null;
+      for(const k of qkeys(p)){for(const c of idx.get(k)||[])if(samePerson(c.p,p)){e=c;break}if(e)break}
       if(e){if(words(val)>words(e.val)){e.val=val;map.set(e.tok,val)}
-        e.p.first=e.p.first||p.first;e.p.last=e.p.last||p.last;e.p.patr=e.p.patr||p.patr;return e.tok}
-      const tok=fresh(label,val);people.push({p,val,tok});return tok}
+        e.p.first=e.p.first||p.first;e.p.last=e.p.last||p.last;e.p.patr=e.p.patr||p.patr;e.p.ini=e.p.ini||p.ini;add(e);return e.tok}
+      const tok=fresh(label,val);add({p,val,tok});return tok}
     const key=label+"|"+(label==="URL"?val:val.toLowerCase().replace(/\s+/g," "));
     if(byKey.has(key))return byKey.get(key);
     const t=fresh(label,val);byKey.set(key,t);return t};
   // 1) словарь пользователя: слово и его склонения (основа без последней гласной/й/ь), без учёта регистра
   for(const raw of dictLines){const w=raw.trim();if(w.length<3)continue;
     const cyr=/[а-яё]/i.test(w), base=esc(cyr&&/[аяьй]$/i.test(w)?w.slice(0,-1):w);
-    const re=new RegExp(`(?<![А-ЯЁа-яёA-Za-z])${base}${cyr?SUF:"[a-z]{0,2}"}(?![А-ЯЁа-яёA-Za-z])`,"gi");
+    const re=new RegExp(`(?<![А-ЯЁа-яёA-Za-z])${base}${cyr?SUF:"(?:'s|s|es)?"}(?![А-ЯЁа-яёA-Za-z])`,"gi");
     let m;while((m=re.exec(text)))spans.push([m.index,m.index+m[0].length,"СЛОВАРЬ",w]);}
   // 2) правила
   for(const [label,re,grp,check,multi] of RULES){re.lastIndex=0;let m;
     while((m=re.exec(text))){const v=Array.isArray(grp)?grp.map(g=>m[g]).find(x=>x!=null):m[grp];if(v==null)continue;
       const st=m.index+(grp?m[0].lastIndexOf(v):0);
       if(multi){for(const [a,b] of multi(v))spans.push([st+a,st+b,label,text.slice(st+a,st+b)]);continue}
-      if(check&&!check(v))continue;spans.push([st,st+v.length,label,v]);if(label==="СЕКРЕТ")sec.push([st,st+v.length,v]);}}
+      if(check&&!check(v))continue;
+      let a=st,b=st+v.length;
+      if(label==="ЧЕЛОВЕК"){let h;while((h=/^-[А-ЯЁ][а-яё]+/.exec(text.slice(b,b+60))))b+=h[0].length;
+        while((h=/([А-ЯЁ][а-яё]+)-$/.exec(text.slice(Math.max(0,a-60),a))))a-=h[0].length}
+      spans.push([a,b,label,text.slice(a,b)]);if(label==="СЕКРЕТ")sec.push([st,st+v.length,v]);}}
   // 3) без наложений: длинные раньше
-  spans.sort((a,b)=>a[0]-b[0]||(b[1]-b[0])-(a[1]-a[0]));
+  spans.sort((a,b)=>a[0]-b[0]||(b[1]-b[0])-(a[1]-a[0])||(b[2]==="СЕКРЕТ")-(a[2]==="СЕКРЕТ"));
   const keep=[];for(const s of spans){const l=keep[keep.length-1];
     if(l&&s[0]<l[1]){if(s[1]>l[1]){if(s[1]-s[0]>l[1]-l[0]){l[2]=s[2]}l[1]=s[1];l[3]=text.slice(l[0],l[1]);if(l[2]==="СЛОВАРЬ"){l[2]="СЛОВО"}}}
     else keep.push(s.slice())}

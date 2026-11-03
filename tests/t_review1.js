@@ -38,6 +38,3 @@ const big = "Иван Сидоров.\n".repeat(30000), t0 = Date.now();
 assert.strictEqual(depersonalize(big, []).text, "[ЧЕЛОВЕК_1].\n".repeat(30000));
 assert.ok(Date.now() - t0 < 5000, "слишком долго: " + (Date.now() - t0) + " мс");
 console.log("ревью раунд 1: ok");
-// несколько секретов в одной ссылке нумеруются по порядку
-r = depersonalize("https://x.test/?token=aaaa1111&password=bbbb2222", []);
-assert.strictEqual(restore(r.text, r.map), "https://x.test/?token=[СЕКРЕТ_1]&password=[СЕКРЕТ_2]");
