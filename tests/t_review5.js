@@ -39,5 +39,8 @@ const leak = async (files, bads) => { const r = await O.anonymizeDocx(await docx
   const sc = await leak({ "word/document.xml": W + '<w:p><w:bookmarkStart w:id="1" w:name="Сидоров_Иван"/></w:p>' + WE, "customXml/itemProps1.xml": '<ds:datastoreItem ds:itemID="{ABC}"><ds:schemaRefs><ds:schemaRef ds:uri="http://schemas.openxmlformats.org/officeDocument/2006/bibliography"/></ds:schemaRefs></ds:datastoreItem>' }, []);
   assert.ok(sc.p["customXml/itemProps1.xml"].includes("officeDocument/2006/bibliography") && sc.p["customXml/itemProps1.xml"].includes("{ABC}"));
   assert.ok(sc.r.warn.some(w => /закладк/.test(w)));
+  // раунд 5: вложенное поле не уезжает
+  const nf = await leak({ "word/document.xml": W + '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> IF 1 = 1 "</w:instrText></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> MERGEFIELD x </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:instrText>" "ivan.sid</w:instrText></w:r><w:r><w:instrText>orov@example.test" </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>' + WE }, ["ivan.sid"]);
+  assert.ok(/IF 1 = 1 "<\/w:instrText>[\s\S]*MERGEFIELD x[\s\S]*\[EMAIL_1\]/.test(nf.p["word/document.xml"]), "порядок кусков кода сохранён");
   console.log("ревью раунд 5 (Opus 3): ok");
 })().catch(e => { console.error(e); process.exit(1) });

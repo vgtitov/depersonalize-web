@@ -505,19 +505,19 @@ const attrEsc = s => xmlEsc(s).replace(/"/g, "&quot;");
 // Группы текста части: живой текст абзаца (с вставками w:ins) — одна группа; удалённый текст (w:delText) — своя группа на каждое w:del; w:instrText — по одному.
 function textGroups(xml) {
   const re = /<(w|a):p[ >]|<\/(?:w|a):p>|<w:(?:del|moveFrom|moveTo)\b(?![^>]*\/>)[^>]*>|<\/w:(?:del|moveFrom|moveTo)>|<w:fldChar\b[^>]*>|<w:ins\b(?![^>]*\/>)[^>]*>|<\/w:ins>|<(w:t|w:delText|a:t|w:instrText)\b(?![^>]*\/>)([^>]*)>([\s\S]*?)<\/\2>/g;
-  const paras = [], dels = []; let pid = 0, did = 0, ins = 0, fid = 0; const flds = []; const groups = new Map();
+  const paras = [], dels = []; let pid = 0, did = 0, ins = 0, fid = 0; const flds = []; let seg = 0; const groups = new Map();
   for (const m of xml.matchAll(re)) {
     const t = m[0];
     if (m[1]) paras.push(++pid);
     else if (t === "</w:p>" || t === "</a:p>") paras.pop();
     else if (/^<w:(?:del|moveFrom|moveTo)[\s>]/.test(t)) dels.push({ id: ++did, mv: !/^<w:del[\s>]/.test(t) });
     else if (/^<\/w:(?:del|moveFrom|moveTo)>/.test(t)) dels.pop();
-    else if (t.startsWith("<w:fldChar")) { const ty = /fldCharType="(\w+)"/.exec(t); if (ty && ty[1] === "begin") flds.push(++fid); else if (ty && ty[1] === "end") flds.pop() }
+    else if (t.startsWith("<w:fldChar")) { const ty = /fldCharType="(\w+)"/.exec(t); if (ty && ty[1] === "begin") { flds.push(++fid); seg++ } else if (ty && ty[1] === "end") { flds.pop(); seg++ } }
     else if (/^<w:ins[\s>]/.test(t)) ins++;
     else if (t === "</w:ins>") ins--;
     else {
       const name = m[2], dl = dels[dels.length - 1], pr = paras[paras.length - 1] || 0;
-      const key = dl && dl.mv ? "m" + dl.id : name === "w:instrText" ? (flds.length ? "f" + flds[flds.length - 1] : "i" + pr) : name === "w:delText" ? "d" + (dl ? dl.id : 0) : "p" + pr; // код поля может быть разбит на части: все части абзаца вместе
+      const key = dl && dl.mv ? "m" + dl.id : name === "w:instrText" ? (flds.length ? "f" + flds[flds.length - 1] + "." + seg : "i" + pr) : name === "w:delText" ? "d" + (dl ? dl.id : 0) : "p" + pr; // код поля может быть разбит на части: все части абзаца вместе
       const run = { open: m.index, ca: m.index + 1 + name.length + m[3].length + 1, name, attrs: m[3], raw: m[4] };
       run.cb = run.ca + m[4].length; run.end = run.cb + name.length + 3;
       if (!groups.has(key)) groups.set(key, { runs: [], chg: false });
