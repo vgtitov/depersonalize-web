@@ -1,6 +1,6 @@
 // Таблицы (CSV, XLSX) и документы (DOCX) локально. Нужен JSZip (vendor/jszip.min.js), движок engine.js. Без сети.
 const Z = typeof JSZip !== "undefined" ? JSZip : require("./vendor/jszip.min.js");
-const E = typeof depersonalize !== "undefined" ? { depersonalize, depersonalizeMany, restore } : require("./engine.js");
+const E = typeof depersonalize !== "undefined" ? { depersonalize, depersonalizeMany, restore, restoreStats } : require("./engine.js");
 
 // ---------- общее ----------
 const xmlUnesc = s => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16))).replace(/&amp;/g, "&");
@@ -9,6 +9,10 @@ const xmlEsc = s => String(s).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/
 function restoreKeys(text, map) {
   return E.restore(text, map).replace(/(?<![\wА-Яа-яЁё])[A-ZА-ЯЁ]+_\d{3,}(?![\wА-Яа-яЁё])/g, k => map.has(k) ? map.get(k) : k);
 }
+
+// Имя безопасной копии не берётся из исходного файла: в имени файла бывают ФИО, а имя видит и ИИ при загрузке.
+const SAFE_SHEET = "Лист1";
+const safeName = kind => (kind === "docx" ? "документ" : "таблица") + "-безопасная-копия." + kind;
 
 // ---------- CSV ----------
 function parseCsv(text) {
@@ -125,7 +129,8 @@ function detectColumns(rows, hasHeader = true) {
     for (const v of sample) { const o = E.depersonalize(v, []).text.trim(); const m = /^\[([А-ЯЁA-Z]+)_\d+\]$/.exec(o); if (m) full[m[1]] = (full[m[1]] || 0) + 1 }
     const top = Object.entries(full).sort((a, b) => b[1] - a[1])[0];
     if (top && top[1] >= 0.6 * sample.length) { kind = KINDS.includes(top[0]) ? top[0] : "ЗНАЧЕНИЕ"; mode = "key" }
-    else { const h = HINTS.find(([, re]) => re.test(name)); if (h) { kind = h[0]; mode = h[2] || "key" } }
+    else { const h = HINTS.find(([, re]) => re.test(name)); if (h) { kind = h[0]; mode = h[2] || "key" }
+      else if (sample.some(v => !/^[\d\s.,:;\/+%$€£₽-]*$/.test(v) && /[A-Za-zА-Яа-яЁё]{3}/.test(v)) && !sample.every(v => /^\p{L}{0,3}[-_ ]?\d+$/u.test(v))) mode = "scan" } // текстовая колонка: имя или телефон в заметке уйдут, поэтому по умолчанию ищем внутри; числа, даты и короткие коды остаются
     return { index: i, name, kind, mode, preview: vals.slice(0, 3) };
   });
 }
@@ -136,6 +141,7 @@ function anonymizeTable(rows, cols, { hasHeader = true, dict = [] } = {}) {
     if (!reg.has(rk)) { n[kind] = (n[kind] || 0) + 1; counts[kind] = n[kind]; const k = kind + "_" + String(n[kind]).padStart(3, "0"); reg.set(rk, k); map.set(k, String(v).trim()); if (num) map.set("#число:" + k, "1") } // число помечаем, чтобы вернуть числом
     return reg.get(rk) };
   const out = rows.map(r => r.slice()), start = hasHeader ? 1 : 0, scan = [];
+  if (hasHeader && out[0]) out[0].forEach((v, c) => { if (typeof v === "string" && v.trim()) scan.push([0, c]) }); // заголовки колонок тоже бывают ФИО
   for (const c of cols) {
     if (c.mode === "key") for (let r = start; r < out.length; r++) { const v = out[r][c.index]; if (v !== "" && v != null) out[r][c.index] = keyOf(c.kind, v) }
     if (c.mode === "scan") for (let r = start; r < out.length; r++) if (out[r][c.index] !== "" && out[r][c.index] != null) scan.push([r, c.index]);
@@ -147,6 +153,7 @@ function anonymizeTable(rows, cols, { hasHeader = true, dict = [] } = {}) {
     for (const [t, v] of res.map) map.set(t, v);
     for (const [k, v] of Object.entries(res.counts)) counts[k] = (counts[k] || 0) + v;
   }
+  map.meta = { id: Math.random().toString(16).slice(2, 8).padEnd(6, "0"), created: new Date().toISOString() };
   const drop = new Set(cols.filter(c => c.mode === "drop").map(c => c.index));
   return { rows: out.map(r => r.filter((_, i) => !drop.has(i))), map, counts, warn };
 }
@@ -164,10 +171,15 @@ const FLAT = /^(?:customXml\/(?!_rels\/).*\.xml|word\/(?:charts|diagrams)\/(?!_r
 const attrEsc = s => xmlEsc(s).replace(/"/g, "&quot;");
 // Группы текста части: живой текст абзаца (с вставками w:ins) — одна группа; удалённый текст (w:delText) — своя группа на каждое w:del; w:instrText — по одному.
 function textGroups(xml) {
-  const re = /<(w|a):p[ >]|<\/(?:w|a):p>|<w:(?:del|moveFrom|moveTo)\b(?![^>]*\/>)[^>]*>|<\/w:(?:del|moveFrom|moveTo)>|<w:fldChar\b[^>]*>|<w:ins\b(?![^>]*\/>)[^>]*>|<\/w:ins>|<(w:t|w:delText|a:t|w:instrText)\b(?![^>]*\/>)([^>]*)>([\s\S]*?)<\/\2>/g;
+  const re = /<w:br\b[^>]*\/>|<w:cr\s*\/>|<w:tab\s*\/>|<w:ptab\b[^>]*\/>|<(w|a):p[ >]|<\/(?:w|a):p>|<w:(?:del|moveFrom|moveTo)\b(?![^>]*\/>)[^>]*>|<\/w:(?:del|moveFrom|moveTo)>|<w:fldChar\b[^>]*>|<w:ins\b(?![^>]*\/>)[^>]*>|<\/w:ins>|<(w:t|w:delText|a:t|w:instrText)\b(?![^>]*\/>)([^>]*)>([\s\S]*?)<\/\2>/g;
   const paras = [], dels = []; let pid = 0, did = 0, ins = 0, fid = 0; const flds = []; let seg = 0; const groups = new Map();
   for (const m of xml.matchAll(re)) {
     const t = m[0];
+    if (/^<w:(?:br|cr|tab|ptab)\b/.test(t)) { // разрыв строки и табуляция остаются на месте и разделяют слова
+      const dl = dels[dels.length - 1], pr = paras[paras.length - 1] || 0, key = dl && dl.mv ? "m" + dl.id : dl ? "d" + dl.id : "p" + pr;
+      if (!groups.has(key)) groups.set(key, { runs: [], items: [], chg: false });
+      groups.get(key).items.push({ sep: /^<w:(?:tab|ptab)\b/.test(t) ? "\t" : "\n" }); continue;
+    }
     if (m[1]) paras.push(++pid);
     else if (t === "</w:p>" || t === "</a:p>") paras.pop();
     else if (/^<w:(?:del|moveFrom|moveTo)[\s>]/.test(t)) dels.push({ id: ++did, mv: !/^<w:del[\s>]/.test(t) });
@@ -180,11 +192,25 @@ function textGroups(xml) {
       const key = dl && dl.mv ? "m" + dl.id : name === "w:instrText" ? (flds.length ? "f" + flds[flds.length - 1] + "." + seg : "i" + pr) : name === "w:delText" ? "d" + (dl ? dl.id : 0) : "p" + pr; // код поля может быть разбит на части: все части абзаца вместе
       const run = { open: m.index, ca: m.index + 1 + name.length + m[3].length + 1, name, attrs: m[3], raw: m[4] };
       run.cb = run.ca + m[4].length; run.end = run.cb + name.length + 3;
-      if (!groups.has(key)) groups.set(key, { runs: [], chg: false });
-      const g = groups.get(key); g.runs.push(run); if (ins > 0 || (dl && dl.mv)) g.chg = true;
+      if (!groups.has(key)) groups.set(key, { runs: [], items: [], chg: false });
+      const g = groups.get(key); g.runs.push(run); g.items.push(run); if (ins > 0 || (dl && dl.mv)) g.chg = true;
     }
   }
   return [...groups.values()];
+}
+const groupText = g => g.items.map(i => i.sep || xmlUnesc(i.raw)).join("");
+// Новый текст группы раскладывается обратно по фрагментам: разрывы и табуляции стоят на прежних местах. Не сошлось число разрывов: весь текст в первый фрагмент, разрывы остаются после него.
+function groupEdits(g, nt) {
+  const seps = g.items.filter(i => i.sep).length, pieces = nt.split(/[\n\t]/);
+  const wr = (r, t) => "<" + r.name + ' xml:space="preserve"' + r.attrs.replace(/\s*xml:space=(?:"[^"]*"|'[^']*')/, "") + ">" + xmlEsc(t) + "</" + r.name + ">";
+  const edits = [];
+  if (pieces.length !== seps + 1 || !g.runs.length) { const f = g.runs[0]; if (f) { edits.push([f.open, f.end, wr(f, nt.replace(/[\n\t]/g, " "))]); for (const r of g.runs.slice(1)) edits.push([r.ca, r.cb, ""]) } return edits }
+  let si = 0, first = true; // фрагменты между разрывами: текст куда в первый w:t сегмента, остальные пустые
+  for (const it of g.items) {
+    if (it.sep) { si++; first = true; continue }
+    if (first) { edits.push([it.open, it.end, wr(it, pieces[si])]); first = false } else edits.push([it.ca, it.cb, ""]);
+  }
+  return edits;
 }
 // Атрибуты с текстом: подписи и подсказки, имена файлов и закладок, поля содержимого, переменные документа, коды простых полей.
 const SLOT_ANY = /\b((?:w:|o:)?(?:descr|title|alt|tooltip|instr))="([^"]*)"/g, SLOT_TAG = /^<(?:[\w]+:)?(?:cNvPr|docPr|docVar|docPart|alias|tag|attr|smartTagPr|placeholder)\b/, SLOT_NAME = /\b((?:w:)?(?:name|val))="([^"]*)"/g;
@@ -209,7 +235,7 @@ async function mapDocx(buf, fn, { clean = false } = {}) {
   for (const name of names) {
     if (PARA.test(name)) {
       const xml = await zip.file(name).async("string"), groups = textGroups(xml), slots = attrSlots(xml);
-      items.push({ name, xml, kind: "xml", groups, slots, texts: [...groups.map(g => xmlUnesc(g.runs.map(r => r.raw).join(""))), ...slots.map(x => xmlUnesc(x.raw))] });
+      items.push({ name, xml, kind: "xml", groups, slots, texts: [...groups.map(groupText), ...slots.map(x => xmlUnesc(x.raw))] });
     } else if (FLAT.test(name)) {
       const xml = await zip.file(name).async("string"), app = name === "docProps/app.xml", chart = /\/charts\//.test(name);
       const nodes = [...xml.matchAll(app ? /<vt:lpstr>([^<>]*[^<>\s][^<>]*)</g : /(?<=>)([^<>]*[^<>\s][^<>]*)(?=<)/g)].map(m => ({ a: m.index + m[0].indexOf(m[1]), b: m.index + m[0].indexOf(m[1]) + m[1].length, raw: m[1] })).filter(x => !(chart && /^[\d\s.,+-]+$/.test(x.raw)));
@@ -229,9 +255,7 @@ async function mapDocx(buf, fn, { clean = false } = {}) {
       for (const g of it.groups) {
         const nt = res[k], old = all[k]; k++;
         if (nt === old) continue; changed++; if (g.chg) merged = true;
-        const f = g.runs[0];
-        edits.push([f.open, f.end, "<" + f.name + ' xml:space="preserve"' + f.attrs.replace(/\s*xml:space="[^"]*"/, "") + ">" + xmlEsc(nt) + "</" + f.name + ">"]);
-        for (const r of g.runs.slice(1)) edits.push([r.ca, r.cb, ""]);
+        edits.push(...groupEdits(g, nt));
       }
       for (const x of it.slots) { const nt = res[k], old = all[k]; k++; if (nt !== old) { changed++; edits.push([x.a, x.b, attrEsc(nt)]) } }
     } else if (it.kind === "flat") {
@@ -252,6 +276,11 @@ async function mapDocx(buf, fn, { clean = false } = {}) {
     const blank = async (p, tags) => { const f = zip.file(p); if (f) zip.file(p, (await f.async("string")).replace(new RegExp("(<(" + tags + ")(?:\\s[^>]*)?>)[\\s\\S]*?(</\\2>)", "g"), "$1$3")) };
     await blank("docProps/core.xml", "dc:creator|cp:lastModifiedBy|dc:title|dc:subject|dc:description|cp:keywords|cp:category");
     await blank("docProps/app.xml", "Company|Manager");
+    const thumbs = names.filter(n => /^docProps\/thumbnail\./i.test(n));
+    for (const n of thumbs) zip.remove(n); // миниатюра первой страницы показывает текст документа
+    if (thumbs.length && zip.file("_rels/.rels")) zip.file("_rels/.rels", (await zip.file("_rels/.rels").async("string")).replace(/<Relationship\b[^>]*\/thumbnail"[^>]*\/>|<Relationship\b[^>]*Target="docProps\/thumbnail[^>]*\/>/g, ""));
+    const alt = names.filter(n => /^word\/(?!_rels\/).*\.(?:mht|mhtml|htm|html|rtf)$/i.test(n));
+    if (alt.length) warn.push("в документе есть вставки HTML или RTF (" + alt.length + "): их текст не обрабатывается, удалите вставки или проверьте отдельно");
     const emb = names.filter(n => /^word\/(embeddings|activeX)\//.test(n)), img = names.filter(n => /^word\/media\//.test(n));
     if (emb.length) warn.push("в документе есть вложенные файлы (" + emb.length + "): они не обработаны, удалите их или проверьте отдельно");
     if (img.length) warn.push("в документе есть картинки (" + img.length + "): текст на них не обрабатывается");
@@ -264,7 +293,8 @@ async function anonymizeDocx(buf, dict = []) {
     preview = texts.map((t, i) => [t, out[i]]).filter(([a, b]) => a !== b).slice(0, 6); return out }, { clean: true });
   return { data: o.data, map: r.map, counts: r.counts, warn: [...r.warn.filter(w => !/словарь пуст/.test(w)), ...o.warn], changed: o.changed, preview };
 }
-async function restoreDocx(buf, map) { return (await mapDocx(buf, texts => texts.map(t => restoreKeys(t, map)))).data }
+async function restoreDocx(buf, map, stats) { // stats (необязательно): сюда пишется, сколько кодов найдено и сколько не из этого ключа
+  return (await mapDocx(buf, texts => { if (stats) { const u = new Set(); let f = 0, m = 0; for (const t of texts) { const q = E.restoreStats(t, map); f += q.found; m += q.matched; q.unknown.forEach(x => u.add(x)) } Object.assign(stats, { found: f, matched: m, unknown: [...u] }) } return texts.map(t => restoreKeys(t, map)) })).data }
 
 // Простой .docx для примеров: абзацы и таблица. Открывается в Word и LibreOffice.
 async function makeDocx({ paragraphs = [], table = [], author = "" }) {
@@ -279,5 +309,5 @@ async function makeDocx({ paragraphs = [], table = [], author = "" }) {
   return z.generateAsync({ type: "uint8array", compression: "DEFLATE" });
 }
 
-const api = { makeDocx, restoreKeys, parseCsv, toCsv, readXlsx, writeXlsx, detectColumns, anonymizeTable, restoreRows, anonymizeDocx, restoreDocx, mapDocx, KINDS };
+const api = { safeName, SAFE_SHEET, makeDocx, restoreKeys, parseCsv, toCsv, readXlsx, writeXlsx, detectColumns, anonymizeTable, restoreRows, anonymizeDocx, restoreDocx, mapDocx, KINDS };
 if (typeof module !== "undefined") module.exports = api;

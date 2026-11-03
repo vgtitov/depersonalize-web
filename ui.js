@@ -14,7 +14,11 @@
   const baseName = f => f.replace(/\.[^.]+$/, "");
   const counts = c => Object.entries(c).map(([k, v]) => k + ": " + v).join(", ") || "ничего не найдено";
   const TYPES = { xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", csv: "text/csv;charset=utf-8", json: "application/json" };
-  const saveKey = tab => { if (!M[tab].size) return false; download("ключ-обезличивания.json", mapToJson(M[tab]), TYPES.json); return true };
+  const keyTag = m => m && m.meta ? " №" + m.meta.id + (m.meta.created ? " от " + new Date(m.meta.created).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "") : "";
+  const saveKey = tab => { if (!M[tab].size) return false; download("ключ-обезличивания" + (M[tab].meta ? "-" + M[tab].meta.id : "") + ".json", mapToJson(M[tab]), TYPES.json); return true };
+  const setKey = (tab, map) => { const old = M[tab]; M[tab] = map; return old.size ? "\nВнимание: прежний ключ этой вкладки" + keyTag(old) + " заменён новым. Если ждёте ответ ИИ по прошлому файлу, загрузите его ключ." : "" };
+  // Итог возврата: сколько кодов найдено и сколько из них не из этого ключа (чужой ключ или ИИ изменил код).
+  const backNote = (st, tab) => " Ключ" + keyTag(M[tab]) + ": кодов в ответе " + st.found + ", возвращено " + st.matched + (st.unknown.length ? ". Не из этого ключа: " + st.unknown.slice(0, 6).join(", ") + (st.unknown.length > 6 ? "…" : "") + ". Возможно, загружен ключ от другого документа." : ".");
   async function loadKey(file, msgId, tab) {
     if (!file) return;
     try { M[tab] = mapFromJson(await file.text()); say(msgId, "Ключ загружен, значений: " + [...M[tab].keys()].filter(k => k[0] !== "#").length, "ok") }
@@ -41,15 +45,15 @@
   $("go").onclick = () => {
     if (!$("src").value.trim()) return say("rep", "Сначала вставьте текст в поле выше.", "bad");
     try {
-      const r = depersonalize($("src").value, dict()); M.text = r.map; $("out").value = r.text;
-      say("rep", "Заменено: " + counts(r.counts) + (r.warn.length ? "\nВнимание: " + r.warn.join("; ") : "") + "\nПроверьте копию глазами перед отправкой.", r.warn.length ? "warn" : "ok");
+      const r = depersonalize($("src").value, dict()), keyWarn = setKey("text", r.map); $("out").value = r.text;
+      say("rep", "Заменено: " + counts(r.counts) + (r.warn.length ? "\nВнимание: " + r.warn.join("; ") : "") + keyWarn + "\nПроверьте копию глазами перед отправкой.", r.warn.length || keyWarn ? "warn" : "ok");
       $("copy").disabled = $("savekey-text").disabled = false;
     } catch (e) { fail("rep", e) }
   };
   $("copy").onclick = async () => { try { await navigator.clipboard.writeText($("out").value) } catch (e) { $("out").select(); document.execCommand("copy") } say("m-text", "Скопировано. Вставьте в ИИ.", "ok") };
   $("savekey-text").onclick = () => { if (saveKey("text")) say("m-text", "Ключ сохранён. Держите файл у себя: в нём настоящие данные.", "ok") };
   $("keyfile-text").onchange = e => loadKey(e.target.files[0], "m-text", "text");
-  $("back").onclick = () => { if (!$("ans").value.trim()) return say("m-text", "Вставьте ответ ИИ.", "bad"); if (!needKey("m-text", "text")) return; $("res").value = restoreKeys($("ans").value, M.text); say("m-text", "Готово: настоящие значения возвращены.", "ok") };
+  $("back").onclick = () => { if (!$("ans").value.trim()) return say("m-text", "Вставьте ответ ИИ.", "bad"); if (!needKey("m-text", "text")) return; const st = restoreStats($("ans").value, M.text); $("res").value = restoreKeys($("ans").value, M.text); say("m-text", "Готово: настоящие значения возвращены." + backNote(st, "text"), st.unknown.length ? "warn" : "ok") };
 
   // ---- Excel ----
   const KIND_LABEL = { "ЧЕЛОВЕК": "ФИО", "ТЕЛЕФОН": "Телефон", "EMAIL": "Почта", "ОРГ": "Организация", "ЗНАЧЕНИЕ": "Другое" };
@@ -83,21 +87,21 @@
     rows.slice(0, 6).forEach((r, i) => { const tr = t.insertRow(); r.forEach(v => { const c = document.createElement(i === 0 && $("xl-head").checked ? "th" : "td"); c.textContent = v; tr.append(c) }) }); tw.append(t); w.append(h, tw); return w };
   $("xl-go").onclick = () => {
     try {
-      const r = anonymizeTable(X.rows, X.cols, { hasHeader: $("xl-head").checked, dict: dict() }); M.xl = r.map; X.result = r.rows;
+      const r = anonymizeTable(X.rows, X.cols, { hasHeader: $("xl-head").checked, dict: dict() }), keyWarn = setKey("xl", r.map); X.result = r.rows;
       const p = $("xl-prev"); p.textContent = ""; const g = document.createElement("div"); g.className = "two"; g.append(prevTable(X.rows, "Было (первые строки)"), prevTable(r.rows, "Стало: это уйдёт в ИИ")); p.append(g);
-      $("xl-dl").disabled = $("xl-key").disabled = false; say("m-xl", "Готово. Заменено значений: " + counts(r.counts) + ". Посмотрите таблицу «Стало» и скачайте копию." + (r.warn.length ? "\nВнимание: " + r.warn.join("; ") : ""), r.warn.length ? "warn" : "ok");
+      $("xl-dl").disabled = $("xl-key").disabled = false; say("m-xl", "Готово. Заменено значений: " + counts(r.counts) + ". Посмотрите таблицу «Стало» и скачайте копию." + (r.warn.length ? "\nВнимание: " + r.warn.join("; ") : "") + keyWarn, r.warn.length || keyWarn ? "warn" : "ok");
     } catch (e) { fail("m-xl", e) }
   };
-  $("xl-dl").onclick = async () => { try { const n = X.name + "-безопасная-копия"; if (X.csv) download(n + ".csv", toCsv(X.result, X.delim), TYPES.csv); else download(n + ".xlsx", await writeXlsx(X.result, X.sheets[X.sheetIdx].name), TYPES.xlsx) } catch (e) { fail("m-xl", e) } };
+  $("xl-dl").onclick = async () => { try { if (X.csv) download(safeName("csv"), toCsv(X.result, X.delim), TYPES.csv); else download(safeName("xlsx"), await writeXlsx(X.result, SAFE_SHEET), TYPES.xlsx) } catch (e) { fail("m-xl", e) } }; // имя файла и листа нейтральные: исходные могут содержать ФИО
   $("xl-key").onclick = () => { if (saveKey("xl")) say("m-xl", "Ключ сохранён. Держите файл у себя: в нём настоящие данные.", "ok") };
   $("keyfile-xl").onchange = e => loadKey(e.target.files[0], "m-xl", "xl");
   $("xl-back").onclick = async () => {
     if (!needKey("m-xl", "xl")) return;
     try {
       const f = $("xl-ansfile").files[0];
-      if (f) { const t = await readTable(f), rows = restoreRows(t.sheets[0].rows, M.xl), n = baseName(f.name) + "-с-именами";
-        if (t.csv) download(n + ".csv", toCsv(rows, t.delim), TYPES.csv); else download(n + ".xlsx", await writeXlsx(rows, t.sheets[0].name), TYPES.xlsx); say("m-xl", "Готово: файл с настоящими значениями скачан.", "ok") }
-      else if ($("xl-anstext").value.trim()) { const r = $("xl-res"); r.hidden = false; r.value = restoreKeys($("xl-anstext").value, M.xl); say("m-xl", "Готово: настоящие значения возвращены в тексте.", "ok") }
+      if (f) { const t = await readTable(f), st = restoreStats(t.sheets[0].rows.flat().filter(v => typeof v === "string").join("\n"), M.xl), rows = restoreRows(t.sheets[0].rows, M.xl), n = baseName(f.name) + "-с-именами";
+        if (t.csv) download(n + ".csv", toCsv(rows, t.delim), TYPES.csv); else download(n + ".xlsx", await writeXlsx(rows, t.sheets[0].name), TYPES.xlsx); say("m-xl", "Готово: файл с настоящими значениями скачан." + backNote(st, "xl"), st.unknown.length ? "warn" : "ok") }
+      else if ($("xl-anstext").value.trim()) { const r = $("xl-res"), st = restoreStats($("xl-anstext").value, M.xl); r.hidden = false; r.value = restoreKeys($("xl-anstext").value, M.xl); say("m-xl", "Готово: настоящие значения возвращены в тексте." + backNote(st, "xl"), st.unknown.length ? "warn" : "ok") }
       else say("m-xl", "Выберите файл с ответом ИИ или вставьте текст ответа.", "bad");
     } catch (e) { fail("m-xl", e) }
   };
@@ -114,18 +118,18 @@
   $("doc-file").onchange = e => e.target.files[0] && openDoc(e.target.files[0]);
   $("doc-go").onclick = async () => {
     try {
-      const r = await anonymizeDocx(D.buf, dict()); M.doc = r.map; D.result = r.data;
+      const r = await anonymizeDocx(D.buf, dict()), keyWarn = setKey("doc", r.map); D.result = r.data;
       const sample = r.preview.map(([a, b]) => "Было: " + a.slice(0, 160) + "\nСтало: " + b.slice(0, 160)).join("\n\n");
-      say("doc-rep", "Заменено: " + counts(r.counts) + ". Изменено абзацев: " + r.changed + (r.warn.length ? "\nВнимание: " + r.warn.join("; ") : "") + (sample ? "\n\nНапример:\n" + sample : "") + "\n\nОткройте скачанную копию в Word и проверьте глазами.", r.warn.length ? "warn" : "ok");
+      say("doc-rep", "Заменено: " + counts(r.counts) + ". Изменено абзацев: " + r.changed + (r.warn.length ? "\nВнимание: " + r.warn.join("; ") : "") + (sample ? "\n\nНапример:\n" + sample : "") + keyWarn + "\n\nОткройте скачанную копию в Word и проверьте глазами.", r.warn.length || keyWarn ? "warn" : "ok");
       $("doc-dl").disabled = $("doc-key").disabled = false;
     } catch (e) { fail("doc-rep", e) }
   };
-  $("doc-dl").onclick = () => download(D.name + "-безопасная-копия.docx", D.result, TYPES.docx);
+  $("doc-dl").onclick = () => download(safeName("docx"), D.result, TYPES.docx); // нейтральное имя: в исходном бывают ФИО
   $("doc-key").onclick = () => { if (saveKey("doc")) say("m-doc", "Ключ сохранён. Держите файл у себя: в нём настоящие данные.", "ok") };
   $("keyfile-doc").onchange = e => loadKey(e.target.files[0], "m-doc", "doc");
   $("doc-back").onclick = async () => {
     if (!needKey("m-doc", "doc")) return; const f = $("doc-ansfile").files[0]; if (!f) return say("m-doc", "Выберите файл .docx с ответом ИИ.", "bad");
-    try { download(baseName(f.name) + "-с-именами.docx", await restoreDocx(await f.arrayBuffer(), M.doc), TYPES.docx); say("m-doc", "Готово: файл с настоящими значениями скачан.", "ok") } catch (e) { fail("m-doc", e) }
+    try { const st = {}, data = await restoreDocx(await f.arrayBuffer(), M.doc, st); download(baseName(f.name) + "-с-именами.docx", data, TYPES.docx); say("m-doc", "Готово: файл с настоящими значениями скачан." + backNote(Object.assign({ found: 0, matched: 0, unknown: [] }, st), "doc"), (st.unknown || []).length ? "warn" : "ok") } catch (e) { fail("m-doc", e) }
   };
   $("ex-doc").onclick = async () => {
     const data = await makeDocx({ author: "Сидоров И. П.", paragraphs: ["Договор поставки", "Заказчик: ООО «Ромашка», контактное лицо Иван Петрович Сидоров, тел. +375 29 123-45-67, почта ivan.sidorov@example.test.", "Бухгалтер Козлова Мария Сергеевна подготовит акт до конца месяца. Сидорову нужно подписать его первым."], table: [["Сотрудник", "Телефон"], ["Пётр Иванов", "+375 44 765-43-21"]] });

@@ -64,17 +64,26 @@ const RULES = [ // [метка, regex, группа значения, прове
  ["УНП", /(?<![\wА-Яа-яЁё])унп(?![\wА-Яа-яЁё])\D{0,12}?(\d{9})(?!\d)/gi, 1],
  ["КАРТА", /(?<!\d)\d(?:[ -]?\d){12,18}(?!\d)/g, 0, v=>luhn(v.replace(/\D/g,""))],
  ["IBAN", /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\b/g, 0],
+ ["ПАСПОРТ", /(?<![\wА-Яа-яЁё])паспорт\w*[ \t]*(?:№|N|серии?|номер|\.|:)*[ \t]*([A-ZА-ЯЁ]{2}[ \t]?\d{7}|\d{2}[ \t]?\d{2}[ \t]?\d{6}|\d{6,10})(?!\d)/gi, 1],
+ ["ПАСПОРТ", /(?<![A-Za-z\d])(?:MP|KH|AB|BM|HB|KB|MC|PP|SP)[ ]?\d{7}(?!\d)/g, 0],
+ ["ИДНОМЕР", /(?<![\w])\d{7}[A-Z]\d{3}[A-Z]{2}\d(?![\w])/g, 0],
+ ["РОЖДЕНИЕ", /(?<![\wА-Яа-яЁё])(?:дата рождения|рожд(?:ения|ён|ена)|д\.р\.|д\/р|родил(?:ся|ась)|born|dob)\D{0,12}?(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}|\d{1,2}[ \t]+[а-яё]+[ \t]+\d{4}(?:[ \t]?г\.?)?)/gi, 1],
+ ["АДРЕС", /(?<![А-ЯЁа-яё])(?:г\.[ \t]*[А-ЯЁ][а-яё-]+,[ \t]*)?(?:ул\.|улица|пр-т|просп(?:ект|\.)|пер\.|переулок|б-р|бульвар|пл\.|площадь|шоссе)[ \t]*[А-ЯЁ0-9][\wА-Яа-яЁё.-]*(?:[ \t]+[А-ЯЁ][\wа-яё.-]*){0,2},?[ \t]*(?:д\.?[ \t]*)?\d+[А-Яа-я]?(?:[ \t]*[,\/-][ \t]*(?:к(?:орп)?\.?|стр\.?)?[ \t]*\d+)?(?:,?[ \t]*(?:кв\.?|оф\.?|офис|комн?\.?)[ \t]*\d+)?/g, 0],
  ["ЧЕЛОВЕК", /(?<![А-ЯЁа-яё])[А-ЯЁ]{2,}(?:[ \t]+[А-ЯЁ]{2,})+(?![А-ЯЁа-яё])/g, 0, null, capsPeople],
  ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+${SURN}(?![а-яё])[ \\t]+[А-ЯЁ]\\.[ \\t]?[А-ЯЁ]\\.`,"g"), 0],
  ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ]\\.[ \\t]?[А-ЯЁ]\\.[ \\t]?[А-ЯЁ][а-яё]+${SURN}(?![а-яё])`,"g"), 0],
  ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+[ \\t]+[А-ЯЁ][а-яё]+${PATR}(?![а-яё])(?:[ \\t]+[А-ЯЁ][а-яё]{2,}(?:-[А-ЯЁ][а-яё]+)?(?![а-яё-]))?`,"g"), 0, null, patrFull],
- ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])${CAP}[ \\t]+${CAP}[ \\t]+[А-ЯЁ][а-яё]+${PATR}(?![а-яё])`,"g"), 0, v=>{const [w1,w2]=v.split(/\s+/);return FIRSTSET.has(stem(w2))&&(FIRSTSET.has(stem(w1))||new RegExp("^[А-ЯЁ][а-яё]+"+SURN+"$").test(w1))}],
+ ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])${CAP}[ \\t]+${CAP}[ \\t]+[А-ЯЁ][а-яё]+${PATR}(?![а-яё])`,"g"), 0, v=>{const [w1,w2]=v.split(/\s+/);return FIRSTSET.has(stem(w2))&&(FIRSTSET.has(stem(w1))||new RegExp("^[А-ЯЁ][а-яё]+"+SURN+"$").test(w1)||surnLike(w1))}],
  ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+${SURN}(?![а-яё])[ \\t]+[А-ЯЁ][а-яё]+(?![а-яё])`,"g"), 0, v=>FIRSTSET.has(stem(v.split(/\s+/)[1]))&&!STOP.has(v.split(/\s+/)[0].toLowerCase())],
  ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+(?![а-яё])[ \\t]+[А-ЯЁ][а-яё]+${SURN}(?![а-яё])`,"g"), 0, v=>FIRSTSET.has(stem(v.split(/\s+/)[0]))],
  ["ЧЕЛОВЕК", /(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+(?![а-яё])[ \t]+[А-ЯЁ][а-яё]{2,}(?![а-яё-])/g, 0, v=>{const [a,b]=v.split(/\s+/);return FIRSTSET.has(stem(a))&&!COMMON.has(a.toLowerCase())&&!FIRSTSET.has(stem(b))&&!NOTSURN.has(b.toLowerCase())&&!PATX.test(b.toLowerCase())}],
  ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ]\\.[ \\t]?[А-ЯЁ][а-яё]+${SURN1}(?![а-яё])`,"g"), 0],
  ["ЧЕЛОВЕК", new RegExp(`(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+${SURN1}(?![а-яё])[ \\t]+[А-ЯЁ]\\.(?![А-ЯЁа-яё])`,"g"), 0],
 ];
+// Фамилия без типичного окончания перед «Имя Отчество» (Кравец, Жук, Бондарь, Мельник): по характерным концовкам, но не должности и обращения.
+const LASTEND=/(?:ец|ець|ик|ук|юк|ко|ло|ай|ун|ак|як|ан|ян|ей|ур|аш|ёк|ек|ач|арь|ярь|аль|ель|оль|ар|ыч)$/i;
+const TITLES=new Set("заказчик покупатель работник сотрудник начальник продавец поставщик исполнитель руководитель преподаватель учитель водитель председатель представитель потребитель получатель отправитель плательщик арендатор арендодатель подрядчик специалист консультант доктор сотрудники здравствуйте добрый уважаемый коллега клиент".split(" "));
+const surnLike=w=>w.length>=3&&LASTEND.test(w)&&!TITLES.has(w.toLowerCase());
 // «Имя Отчество [Фамилия]»: третье слово берём любое с заглавной, но не похожее на глагол
 function patrFull(v){const ws=[...v.matchAll(/\S+/g)];if(!FIRSTSET.has(stem(ws[0][0])))return [];
   const last=ws.length>2&&!VERB.test(ws[2][0].split("-")[0])?ws[2]:ws[1];return [[0,last.index+last[0].length]]}
@@ -143,9 +152,10 @@ function depersonalizeMany(texts, dictLines){
     if(byKey.has(key))return byKey.get(key);
     const t=fresh(label,val);byKey.set(key,t);return t};
   // словарь пользователя: слово и его склонения (основа без последней гласной/й/ь), без учёта регистра
-  const dictRes=[];for(const raw of dictLines){const w=raw.trim();if(w.length<3)continue;
-    const cyr=/[а-яё]/i.test(w), base=esc(cyr&&/[аяьй]$/i.test(w)?w.slice(0,-1):w);
-    dictRes.push([new RegExp(`(?<![А-ЯЁа-яёA-Za-z])${base}${cyr?SUF:"(?:'s|s|es)?"}(?![А-ЯЁа-яёA-Za-z])`,"gi"),w])}
+  const dictRes=[];const skipped=[];
+  for(const raw of dictLines){const w=raw.trim();if(!w)continue;if(w.length<2){skipped.push(w);continue}
+    const cyr=/[а-яё]/i.test(w), short=w.length<3, base=esc(!short&&cyr&&/[аяьй]$/i.test(w)?w.slice(0,-1):w); // короткое слово: как написано (регистр важен, «Ли» не «ли»), без склонений
+    dictRes.push([new RegExp(`(?<![А-ЯЁа-яёA-Za-z])${base}${short?"":cyr?SUF:"(?:'s|s|es)?"}(?![А-ЯЁа-яёA-Za-z])`,short?"g":"gi"),w])}
   const parsed=texts.map(t=>analyze(t,dictRes));
   // одинокая фамилия, которая в этих текстах названа с именем: «сказала Сидорову»
   const lasts=new Set();
@@ -167,13 +177,20 @@ function depersonalizeMany(texts, dictLines){
         for(let k=inner.length-1;k>=0;k--)raw=raw.slice(0,inner[k][0]-a)+ts[k]+raw.slice(inner[k][1]-a)}
       out+=token(label==="СЛОВАРЬ"?"СЛОВО":label, label==="СЛОВАРЬ"?val:raw);pos=b} // слово из словаря: одно слово = один токен независимо от склонения
     return out+text.slice(pos)});
+  map.meta={id:Math.random().toString(16).slice(2,8).padEnd(6,"0"),created:new Date().toISOString()};
   const warn=[];
   if(used.size)warn.push("в исходном тексте уже есть метки вида [ЧЕЛОВЕК_1]: при возврате имён они остаются как есть");
+  if(skipped.length)warn.push("в словаре пропущены слова короче 2 букв: "+skipped.join(", "));
   if(!dictLines.some(s=>s.trim()))warn.push("словарь пуст: фамилии без характерного окончания и названия компаний без формы собственности могли остаться");
   return {texts:outs,map,counts,warn};
 }
 function depersonalize(text, dictLines){const r=depersonalizeMany([text],dictLines);return {text:r.texts[0],map:r.map,counts:r.counts,warn:r.warn}}
-function mapToJson(map){return JSON.stringify({format:"depers-web-map-1",pairs:[...map.entries()]})}
-function mapFromJson(j){const o=JSON.parse(j);if(o.format!=="depers-web-map-1"||!Array.isArray(o.pairs))throw new Error("не карта");return new Map(o.pairs.filter(p=>Array.isArray(p)&&typeof p[0]==="string"&&typeof p[1]==="string"))}
+function mapToJson(map){return JSON.stringify({format:"depers-web-map-1",meta:map.meta||null,pairs:[...map.entries()]})}
+function mapFromJson(j){const o=JSON.parse(j);if(o.format!=="depers-web-map-1"||!Array.isArray(o.pairs))throw new Error("не карта");
+  const m=new Map(o.pairs.filter(p=>Array.isArray(p)&&typeof p[0]==="string"&&typeof p[1]==="string"));
+  m.meta=o.meta&&typeof o.meta.id==="string"?{id:o.meta.id,created:String(o.meta.created||"")}:null;return m}
+// Сколько кодов в ответе ИИ: всего, найдено в ключе, чужих (ключ от другого документа или ИИ изменил код).
+function restoreStats(text,map){const codes=[...String(text).matchAll(/\[[А-ЯЁA-Z]+_\d+\]|(?<![\wА-Яа-яЁё])[A-ZА-ЯЁ]+_\d{3,}(?![\wА-Яа-яЁё])/g)].map(m=>m[0]);
+  const unknown=codes.filter(c=>!map.has(c));return {found:codes.length,matched:codes.length-unknown.length,unknown:[...new Set(unknown)]}}
 function restore(text,map){return text.replace(/\[[А-ЯЁA-Z]+_\d+\]/g,t=>map.has(t)?map.get(t):t)}
-if (typeof module !== "undefined") module.exports = { depersonalize, depersonalizeMany, restore, mapToJson, mapFromJson };
+if (typeof module !== "undefined") module.exports = { depersonalize, depersonalizeMany, restore, restoreStats, mapToJson, mapFromJson };

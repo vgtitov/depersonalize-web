@@ -31,6 +31,7 @@ with sync_playwright() as p:
     pg.click("#xl-go"); txt = pg.inner_text("#xl-prev")
     check("ЧЕЛОВЕК_001" in txt and "Сидоров" in txt.split("Стало")[0] and "Сидоров" not in txt.split("Стало")[1], "excel: до и после показаны")
     with pg.expect_download() as d: pg.click("#xl-dl")
+    check(d.value.suggested_filename == "таблица-безопасная-копия.xlsx", "excel: имя копии нейтральное: " + d.value.suggested_filename)
     xl = pathlib.Path("/tmp/depers-copy.xlsx"); d.value.save_as(xl)
     pg.screenshot(path=str(shots / "2-excel.png"), full_page=True)
     pg.set_input_files("#xl-ansfile", str(xl))
