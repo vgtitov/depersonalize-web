@@ -1,0 +1,43 @@
+// Случаи из ревью Codex, раунд 1.
+const assert = require("assert");
+const { depersonalize, restore, mapToJson } = require("../engine.js");
+const eq = (t, d, want) => assert.strictEqual(depersonalize(t, d).text, want, t);
+// 1. секрет внутри URL не попадает в карту и не возвращается
+let r = depersonalize("https://example.test/?password=Qwerty123", []);
+assert.strictEqual(r.text, "[URL_1]");
+assert.ok(!mapToJson(r.map).includes("Qwerty123"));
+assert.ok(!restore(r.text, r.map).includes("Qwerty123"));
+// 2. значения в кавычках целиком, JSON-ключи в кавычках
+eq('Пароль: "alpha beta"', ["x"], 'Пароль: "[СЕКРЕТ_1]"');
+eq('{"password": "Qwerty123"}', ["x"], '{"password": "[СЕКРЕТ_1]"}');
+eq("pwd='a b c'", ["x"], "pwd='[СЕКРЕТ_1]'");
+// 3. короткие и скобочные значения; готовая метка не заменяется повторно
+eq("Пароль: [Qwerty123]", ["x"], "Пароль: [СЕКРЕТ_1]");
+eq("Пароль: 42", ["x"], "Пароль: [СЕКРЕТ_1]");
+eq("Пароль: [СЕКРЕТ_1]", ["x"], "Пароль: [СЕКРЕТ_1]");
+// 4. длинная прописная цепочка
+eq("ВАЖНО СРОЧНО НУЖНО СЕГОДНЯ НАЙТИ ИВАНОВ ИВАН ИВАНОВИЧ", ["x"], "ВАЖНО СРОЧНО НУЖНО СЕГОДНЯ НАЙТИ [ЧЕЛОВЕК_1]");
+// 5. фамилии на -ский в косвенных падежах
+eq("Передали Ивану Вяземскому.", [], "Передали [ЧЕЛОВЕК_1].");
+eq("Иван Вяземский сказал. Вяземскому ответили.", [], "[ЧЕЛОВЕК_1] сказал. [ЧЕЛОВЕК_1] ответили.");
+// 6. организации без кавычек
+eq("ООО РОМАШКА", [], "[ОРГ_1]");
+eq("ООО Альфа-Бета прислало", [], "[ОРГ_1] прислало");
+// 7. словарь не цепляет посторонние слова
+eq("Вернуть версию.", ["Вера"], "Вернуть версию.");
+eq("Вере передали Веру и Верой.", ["Вера"], "[СЛОВО_1] передали [СЛОВО_1] и [СЛОВО_1].");
+// 8. разные отчества: разные люди
+eq("Иван Петрович Сидоров; Иван Сергеевич Сидоров", [], "[ЧЕЛОВЕК_1]; [ЧЕЛОВЕК_2]");
+eq("Иван Александрович и Иван Алексеевич", [], "[ЧЕЛОВЕК_1] и [ЧЕЛОВЕК_2]");
+// 9. URL чувствителен к регистру
+r = depersonalize("https://example.test/A https://example.test/a", []);
+assert.strictEqual(r.text, "[URL_1] [URL_2]");
+assert.strictEqual(restore(r.text, r.map), "https://example.test/A https://example.test/a");
+// 10. время на большом тексте
+const big = "Иван Сидоров.\n".repeat(30000), t0 = Date.now();
+assert.strictEqual(depersonalize(big, []).text, "[ЧЕЛОВЕК_1].\n".repeat(30000));
+assert.ok(Date.now() - t0 < 5000, "слишком долго: " + (Date.now() - t0) + " мс");
+console.log("ревью раунд 1: ok");
+// несколько секретов в одной ссылке нумеруются по порядку
+r = depersonalize("https://x.test/?token=aaaa1111&password=bbbb2222", []);
+assert.strictEqual(restore(r.text, r.map), "https://x.test/?token=[СЕКРЕТ_1]&password=[СЕКРЕТ_2]");
