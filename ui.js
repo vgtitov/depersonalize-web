@@ -58,9 +58,9 @@
     X.cols = detectColumns(X.rows, $("xl-head").checked);
     const tb = $("xl-cols").tBodies[0]; tb.textContent = "";
     for (const c of X.cols) {
-      const tr = tb.insertRow(); tr.insertCell().textContent = c.name;
-      const pv = tr.insertCell(); pv.className = "pv"; pv.textContent = c.preview.join(" · ");
-      const mk = (opts, cur, key, label) => { const td = tr.insertCell(), s = document.createElement("select"); s.setAttribute("aria-label", label + ": " + c.name);
+      const tr = tb.insertRow(), c0 = tr.insertCell(); c0.textContent = c.name; c0.dataset.l = "Колонка";
+      const pv = tr.insertCell(); pv.className = "pv"; pv.dataset.l = "Примеры"; pv.textContent = c.preview.join(" · ");
+      const mk = (opts, cur, key, label) => { const td = tr.insertCell(), s = document.createElement("select"); td.dataset.l = label; s.setAttribute("aria-label", label + ": " + c.name);
         for (const [v, t] of Object.entries(opts)) { const o = new Option(t, v); s.add(o) } s.value = cur; s.onchange = () => { c[key] = s.value }; td.append(s) };
       mk(KIND_LABEL, c.kind, "kind", "Что это"); mk(MODE_LABEL, c.mode, "mode", "Что сделать");
     }

@@ -45,6 +45,7 @@ details{margin:10px 0}
 summary{cursor:pointer;font-weight:600}
 .small{color:var(--mut);font-size:.9rem}
 .sr{position:absolute;left:-9999px}
+@media(max-width:700px){#xl-cols thead{display:none}#xl-cols tr,#xl-cols td{display:block}#xl-cols tr{border-bottom:2px solid var(--line);padding:6px 0}#xl-cols td{border:0;padding:3px 8px}#xl-cols td::before{content:attr(data-l);display:block;font-size:.8rem;color:var(--mut)}#xl-cols td.pv{max-width:none}}
 </style>
 </head>
 <body>
@@ -555,9 +556,9 @@ if (typeof module !== "undefined") module.exports = api;
     X.cols = detectColumns(X.rows, $("xl-head").checked);
     const tb = $("xl-cols").tBodies[0]; tb.textContent = "";
     for (const c of X.cols) {
-      const tr = tb.insertRow(); tr.insertCell().textContent = c.name;
-      const pv = tr.insertCell(); pv.className = "pv"; pv.textContent = c.preview.join(" · ");
-      const mk = (opts, cur, key, label) => { const td = tr.insertCell(), s = document.createElement("select"); s.setAttribute("aria-label", label + ": " + c.name);
+      const tr = tb.insertRow(), c0 = tr.insertCell(); c0.textContent = c.name; c0.dataset.l = "Колонка";
+      const pv = tr.insertCell(); pv.className = "pv"; pv.dataset.l = "Примеры"; pv.textContent = c.preview.join(" · ");
+      const mk = (opts, cur, key, label) => { const td = tr.insertCell(), s = document.createElement("select"); td.dataset.l = label; s.setAttribute("aria-label", label + ": " + c.name);
         for (const [v, t] of Object.entries(opts)) { const o = new Option(t, v); s.add(o) } s.value = cur; s.onchange = () => { c[key] = s.value }; td.append(s) };
       mk(KIND_LABEL, c.kind, "kind", "Что это"); mk(MODE_LABEL, c.mode, "mode", "Что сделать");
     }
