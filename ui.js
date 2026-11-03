@@ -6,6 +6,12 @@
   const X = { rows: null, sheets: null, name: "таблица", csv: false, delim: ";", cols: [], result: null };
   const D = { buf: null, name: "документ", result: null };
 
+  // ---- тема: по умолчанию как в системе, кнопка переключает; выбор не сохраняется (хранение на странице запрещено) ----
+  const darkNow = () => document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  const showTheme = () => { $("theme").textContent = darkNow() ? "☀ Светлая тема" : "🌙 Тёмная тема"; };
+  $("theme").addEventListener("click", () => { document.documentElement.dataset.theme = darkNow() ? "light" : "dark"; showTheme(); });
+  showTheme();
+
   // ---- общее ----
   const say = (id, text, kind) => { const e = $(id); e.hidden = false; e.className = "msg " + (kind || ""); e.textContent = text };
   const fail = (id, e) => say(id, "Не получилось: " + friendly(e), "bad");

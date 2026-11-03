@@ -16,6 +16,11 @@ with sync_playwright() as p:
     pg.on("console", lambda m: m.type == "error" and errors.append("console: " + m.text))
     pg.goto((root / "index.html").as_uri())
     check("Данные не уходят" in pg.inner_text("body"), "постоянная пометка про браузер видна")
+    # Тема
+    bg0 = pg.evaluate("getComputedStyle(document.body).backgroundColor"); pg.click("#theme")
+    bg1 = pg.evaluate("getComputedStyle(document.body).backgroundColor"); th = pg.evaluate("document.documentElement.dataset.theme")
+    check(bg0 != bg1 and th in ("dark", "light"), f"переключатель темы меняет фон: {bg0} -> {bg1} ({th})")
+    pg.click("#theme"); check(pg.evaluate("getComputedStyle(document.body).backgroundColor") == bg0, "второй щелчок возвращает тему")
     # Текст
     pg.click("#ex-text"); out = pg.input_value("#out")
     check("[ЧЕЛОВЕК_1]" in out and "Сидоров" not in out and "Qwerty123" not in out and "[ОРГ_1]" in out, "текст: пример обезличен: " + out[:90].replace("\n", " "))

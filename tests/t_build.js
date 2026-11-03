@@ -26,3 +26,6 @@ console.log("привязка движка в браузере: ok");
 assert.ok(/id="help"/.test(html) && html.includes('href="https://github.com/vgtitov/depersonalize-web/issues/new/choose"'), "нет блока про сообщение о проблеме");
 assert.ok(/настоящие данные/.test(html.split('id="help"')[1].split("</footer>")[0]), "в блоке нет предупреждения не присылать настоящие данные");
 console.log("сообщить о проблеме: ok");
+// переключатель темы: кнопка, обе темы заданы в CSS, без хранения выбора
+assert.ok(/id="theme"/.test(html) && /:root\[data-theme=dark\]/.test(html) && /:root\[data-theme=light\]|:not\(\[data-theme=light\]\)/.test(html), "нет переключателя темы");
+console.log("переключатель темы: ok");
